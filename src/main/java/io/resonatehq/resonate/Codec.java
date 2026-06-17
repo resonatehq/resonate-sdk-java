@@ -287,27 +287,20 @@ public final class Codec {
      * via {@link #deserializeError}. Mirrors Python's {@code decode_settled}: the {@code assert state
      * != "pending"} maps to an {@link AssertionError}, and {@code raise} maps to a faithful rethrow
      * of the recovered {@link Throwable}.
+     *
+     * <p>Declares {@code throws Throwable} because a rejected payload may recover an arbitrary, even
+     * checked, originating exception (see {@link #deserializeError}); the signature surfaces that
+     * honestly rather than laundering it through an unchecked cast.
      */
-    public static Object decodeSettled(PromiseRecord record) {
+    public static Object decodeSettled(PromiseRecord record) throws Throwable {
         if ("pending".equals(record.state())) {
             throw new AssertionError("decode_settled on a pending record: " + record.id());
         }
         return switch (record.state()) {
             case "resolved" -> record.value().data();
-            case "rejected", "rejected_canceled", "rejected_timedout" -> throw sneakyThrow(
-                    deserializeError(record.value().data()));
+            case "rejected", "rejected_canceled", "rejected_timedout" -> throw deserializeError(
+                    record.value().data());
             default -> null;
         };
-    }
-
-    /**
-     * Rethrows the recovered {@link Throwable} as-is, so {@link #decodeSettled} surfaces the exact
-     * originating error (the analogue of Python's bare {@code raise}). A recovered exception may be
-     * checked; this faithfully propagates it without wrapping. The unchecked cast is erased at
-     * runtime, so the object is thrown exactly as deserialized.
-     */
-    @SuppressWarnings("unchecked")
-    private static <E extends Throwable> RuntimeException sneakyThrow(Throwable e) throws E {
-        throw (E) e;
     }
 }

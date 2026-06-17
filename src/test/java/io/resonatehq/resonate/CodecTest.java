@@ -333,12 +333,12 @@ class CodecTest {
     }
 
     @Test
-    void decodeSettledResolvedReturnsValue() {
+    void decodeSettledResolvedReturnsValue() throws Throwable {
         assertEquals(Map.of("result", 42), Codec.decodeSettled(settled("resolved", Map.of("result", 42))));
     }
 
     @Test
-    void decodeSettledResolvedNoneValue() {
+    void decodeSettledResolvedNoneValue() throws Throwable {
         assertNull(Codec.decodeSettled(settled("resolved", null)));
     }
 
