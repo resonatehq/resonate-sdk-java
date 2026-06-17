@@ -72,8 +72,7 @@ class RegistryTest {
     void duplicateNameRejected() {
         Registry r = new Registry();
         r.register("dup", m("leaf"));
-        AlreadyRegisteredError e =
-                assertThrows(AlreadyRegisteredError.class, () -> r.register("dup", m("flow")));
+        AlreadyRegisteredError e = assertThrows(AlreadyRegisteredError.class, () -> r.register("dup", m("flow")));
         assertEquals("dup", e.name());
     }
 
@@ -104,8 +103,7 @@ class RegistryTest {
         Registry r = new Registry();
         r.register("dup", m("leaf"), 2);
         r.register("dup", m("flow"), 3); // same name, different version is fine
-        AlreadyRegisteredError e =
-                assertThrows(AlreadyRegisteredError.class, () -> r.register("dup", m("flow"), 2));
+        AlreadyRegisteredError e = assertThrows(AlreadyRegisteredError.class, () -> r.register("dup", m("flow"), 2));
         assertEquals(2, e.version());
     }
 
@@ -118,8 +116,8 @@ class RegistryTest {
 
     @Test
     void versionBelowOneRejected() {
-        IllegalArgumentException e = assertThrows(
-                IllegalArgumentException.class, () -> new Registry().register("zero", m("leaf"), 0));
+        IllegalArgumentException e =
+                assertThrows(IllegalArgumentException.class, () -> new Registry().register("zero", m("leaf"), 0));
         assertEquals("version must be >= 1", e.getMessage());
     }
 
