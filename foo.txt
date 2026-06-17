@@ -1,0 +1,5 @@
+Translate @resonate-sdk-py/src/resonate/send.py to
+    @src/main/java/io/resonatehq/resonate/send.java
+
+    then ensure 1:1 behavior by checking the
+    @resonate-sdk-py/tests
