@@ -51,7 +51,10 @@ public final class Send {
 
     private Send() {}
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    // Ignore unknown fields when reshaping responses, matching msgspec.convert's default (the
+    // server may add fields like a schedule's nextRunAt/lastRunAt that the record doesn't model).
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     /**
      * Protocol version string sent in every request head. Mirrors {@code resonate.PROTOCOL_VERSION}

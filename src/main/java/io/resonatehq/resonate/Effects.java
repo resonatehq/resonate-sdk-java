@@ -9,11 +9,11 @@ import io.resonatehq.resonate.Types.PromiseRecord;
 import io.resonatehq.resonate.Types.PromiseSettleReq;
 import java.lang.System.Logger;
 import java.lang.System.Logger.Level;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * The two durable operations the SDK needs — create and settle a promise — built from a {@link
@@ -47,8 +47,13 @@ public final class Effects {
 
     private final Sender sender;
     private final Codec codec;
-    private final Map<String, PromiseRecord> cache = new LinkedHashMap<>();
-    private boolean stopped = false;
+    // Python's plain dict is safe because asyncio is single-threaded. In Java the .handle()
+    // continuations below run on whichever thread completes the sender future -- a SEND_EXECUTOR
+    // thread for the HTTP network -- while the entry reads run on the caller thread, so the writes
+    // and reads cross threads. ConcurrentHashMap makes put/get atomic and a double-put is
+    // idempotent (same id -> same decoded record); the breaker flag is volatile and monotonic.
+    private final Map<String, PromiseRecord> cache = new ConcurrentHashMap<>();
+    private volatile boolean stopped = false;
 
     /**
      * Build effects from a {@link Sender}, {@link Codec}, and optional preloaded promises.
