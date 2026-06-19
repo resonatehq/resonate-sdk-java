@@ -347,7 +347,7 @@ class InvariantsTest {
 
     /** Run a local child whose own child is the one that blocks -- depth-3 suspension. */
     static int childRunsBlockingGrandchild(Context ctx) {
-        return (int) ctx.run(InvariantsTest::grandchildBlocksOnRpc).await();
+        return ctx.run(InvariantsTest::grandchildBlocksOnRpc).await();
     }
 
     /** No remote work: fulfills on the first run -- the degenerate case. */
@@ -394,7 +394,7 @@ class InvariantsTest {
 
     /** Run a local child that suspends on its own rpc -- the §4 suspended-local case. */
     static Object suspendedLocal(Context ctx) {
-        int v = (int) ctx.run(InvariantsTest::childBlocksOnRpc).await();
+        int v = ctx.run(InvariantsTest::childBlocksOnRpc).await();
         return v + 1;
     }
 

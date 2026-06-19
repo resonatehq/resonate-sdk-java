@@ -17,7 +17,7 @@ public final class HelloWorld {
     private HelloWorld() {}
 
     public static String foo(Context ctx, String name) {
-        return (String) ctx.run(HelloWorld::bar, name).await();
+        return ctx.run(HelloWorld::bar, name).await();
     }
 
     public static String bar(Context ctx, String name) {

@@ -40,8 +40,8 @@ public final class Polling {
     // -- Orchestrator ----------------------------------------------------------
 
     public static String renderFrame(Context ctx, String frame, int ms) {
-        String shaded = (String) ctx.run(Polling::shade, frame, ms).await();
-        return (String) ctx.run(Polling::encode, shaded).await();
+        String shaded = ctx.run(Polling::shade, frame, ms).await();
+        return ctx.run(Polling::encode, shaded).await();
     }
 
     public static void main(String[] args) {

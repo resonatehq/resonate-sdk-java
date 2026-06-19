@@ -218,7 +218,7 @@ class ResonateTest {
     }
 
     static int addViaChild(Context ctx, int x, int y) {
-        return (int) (Integer) ctx.run(ResonateTest::add, x, y).await();
+        return ctx.run(ResonateTest::add, x, y).await();
     }
 
     static int slow(Context ctx) {

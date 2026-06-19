@@ -283,7 +283,7 @@ class PlatformErrorsTest {
     }
 
     static int wfRunLeaf(Context ctx) {
-        return (int) ctx.run(PlatformErrorsTest::leaf).await();
+        return ctx.run(PlatformErrorsTest::leaf).await();
     }
 
     static Object wfReturnUnserializable(Context ctx) {

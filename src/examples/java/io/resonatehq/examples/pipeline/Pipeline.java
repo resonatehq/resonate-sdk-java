@@ -63,22 +63,20 @@ public final class Pipeline {
         return "ok";
     }
 
-    @SuppressWarnings("unchecked")
     public static String runPipeline(Context ctx, String url) {
-        String raw = (String) ctx.run(Pipeline::download, url).await();
-        List<String> parsed = (List<String>) ctx.run(Pipeline::parse, raw).await();
+        String raw = ctx.run(Pipeline::download, url).await();
+        List<String> parsed = ctx.run(Pipeline::parse, raw).await();
 
         // fan out: transform_a and transform_b dispatched before either is awaited
-        ResonateFuture fa = ctx.run(Pipeline::transformA, parsed);
-        ResonateFuture fb = ctx.run(Pipeline::transformB, parsed);
+        ResonateFuture<Integer> fa = ctx.run(Pipeline::transformA, parsed);
+        ResonateFuture<String> fb = ctx.run(Pipeline::transformB, parsed);
 
         // fan in
-        int a = ((Number) fa.await()).intValue();
-        String b = (String) fb.await();
+        int a = fa.await();
+        String b = fb.await();
 
-        Merged merged = (Merged) ctx.run(Pipeline::merge, a, b).await();
-        return (String)
-                ctx.run(Pipeline::emit, merged.wordCount(), merged.upper()).await();
+        Merged merged = ctx.run(Pipeline::merge, a, b).await();
+        return ctx.run(Pipeline::emit, merged.wordCount(), merged.upper()).await();
     }
 
     public static void main(String[] args) {

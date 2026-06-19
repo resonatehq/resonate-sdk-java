@@ -171,8 +171,8 @@ class ContextTest {
     }
 
     static int parentWorkflow(Context ctx, int x) {
-        int a = (int) ctx.run(ContextTest::doubleFn, x).await();
-        int b = (int) ctx.run(ContextTest::doubleFn, a).await();
+        int a = ctx.run(ContextTest::doubleFn, x).await();
+        int b = ctx.run(ContextTest::doubleFn, a).await();
         return a + b;
     }
 
@@ -192,16 +192,16 @@ class ContextTest {
     }
 
     static int deepMiddle(Context ctx) {
-        return (int) ctx.run(ContextTest::deepInner).await();
+        return ctx.run(ContextTest::deepInner).await();
     }
 
     static int deepTop(Context ctx) {
-        return (int) ctx.run(ContextTest::deepMiddle).await();
+        return ctx.run(ContextTest::deepMiddle).await();
     }
 
     static int completesThenSuspends(Context ctx) {
-        int a = (int) ctx.run(ContextTest::doubleFn, 21).await();
-        int b = (int) ctx.run(ContextTest::blocksOnRemote).await();
+        int a = ctx.run(ContextTest::doubleFn, 21).await();
+        int b = ctx.run(ContextTest::blocksOnRemote).await();
         return a + b;
     }
 

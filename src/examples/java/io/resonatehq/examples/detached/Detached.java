@@ -60,9 +60,8 @@ public final class Detached {
 
     public static String writeAuditLog(
             Context ctx, String customer, String sku, int amount, String stockRef, String chargeRef) {
-        String digest =
-                (String) ctx.run(Detached::hashPayload, customer, sku, amount).await();
-        String location = (String) ctx.run(Detached::shipToWarehouse, digest).await();
+        String digest = ctx.run(Detached::hashPayload, customer, sku, amount).await();
+        String location = ctx.run(Detached::shipToWarehouse, digest).await();
         System.out.printf("  [write_audit_log] stock=%s charge=%s -> %s%n", stockRef, chargeRef, location);
         return location;
     }
@@ -71,13 +70,12 @@ public final class Detached {
 
     public static OrderResult placeOrder(Context ctx, String customer, String sku, int qty, int amount) {
         // Foreground work -- the order needs both of these to commit.
-        String stockRef = (String) ctx.run(Detached::reserveStock, sku, qty).await();
-        String chargeRef =
-                (String) ctx.run(Detached::chargeCard, customer, amount).await();
+        String stockRef = ctx.run(Detached::reserveStock, sku, qty).await();
+        String chargeRef = ctx.run(Detached::chargeCard, customer, amount).await();
 
         // Fire-and-forget: dispatch the audit workflow by NAME and get back the durable id of its
         // root promise. The audit's body never runs in this task; placeOrder only awaits the id.
-        ResonateFuture auditFuture = ctx.detached("writeAuditLog", customer, sku, amount, stockRef, chargeRef);
+        ResonateFuture<String> auditFuture = ctx.detached("writeAuditLog", customer, sku, amount, stockRef, chargeRef);
         String auditId = auditFuture.id();
         System.out.println("  [place_order] dispatched audit id=" + auditId + " (not waiting on it)");
 

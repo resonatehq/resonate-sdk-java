@@ -93,7 +93,7 @@ public final class Context {
      * rejection or {@link Suspended}), and {@link #id()} waits for the durable promise to be created
      * and then reports its id (surfacing a create failure).
      */
-    public static final class ResonateFuture {
+    public static final class ResonateFuture<T> {
         private final String id;
         private final CompletableFuture<Object> task;
         private final CompletableFuture<Void> created;
@@ -113,9 +113,10 @@ public final class Context {
          * Block on the op's result. Re-raises a rejection's originating error and {@link Suspended}
          * untouched -- the Java analogue of {@code await fut}.
          */
-        public Object await() {
+        @SuppressWarnings("unchecked")
+        public T await() {
             try {
-                return task.join();
+                return (T) task.join();
             } catch (CancellationException exc) {
                 throw exc;
             } catch (CompletionException exc) {
@@ -131,6 +132,14 @@ public final class Context {
                 throw sneaky(unwrap(exc));
             }
             return id;
+        }
+
+        // The engine works in Object; the typed run/rpc overloads know the declared return type R.
+        // Erasure makes this retype a no-op at runtime -- the await() cast is what can actually fail,
+        // exactly where an explicit caller cast would have.
+        @SuppressWarnings("unchecked")
+        <R> ResonateFuture<R> as() {
+            return (ResonateFuture<R>) this;
         }
     }
 
@@ -360,7 +369,7 @@ public final class Context {
     // -- run: execute a child inline on its own context ---------------------------------------
 
     /** Run a registered function by name as a local child (versioned by {@code opts.version}). */
-    public ResonateFuture run(String name, Object... args) {
+    public ResonateFuture<Object> run(String name, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         Durable resolved = state.registry.get(name, opts.version());
@@ -372,38 +381,38 @@ public final class Context {
     }
 
     /** Internal: run the method behind a resolved reference as a local child. */
-    private ResonateFuture run(Method fn, Object... args) {
+    private ResonateFuture<Object> run(Method fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         return runWith(new Durable(fn), link, args);
     }
 
     /** Run a function passed as a method reference ({@code Owner::fn}) as a local child. */
-    public <R> ResonateFuture run(Fn.F0<R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <R> ResonateFuture<R> run(Fn.F0<R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    public <A, R> ResonateFuture run(Fn.F1<A, R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <A, R> ResonateFuture<R> run(Fn.F1<A, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, R> ResonateFuture run(Fn.F2<A, B, R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <A, B, R> ResonateFuture<R> run(Fn.F2<A, B, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, R> ResonateFuture run(Fn.F3<A, B, C, R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <A, B, C, R> ResonateFuture<R> run(Fn.F3<A, B, C, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, D, R> ResonateFuture run(Fn.F4<A, B, C, D, R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <A, B, C, D, R> ResonateFuture<R> run(Fn.F4<A, B, C, D, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, D, E, R> ResonateFuture run(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
-        return run(Fn.methodOf(ref), args);
+    public <A, B, C, D, E, R> ResonateFuture<R> run(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args).as();
     }
 
-    private ResonateFuture runWith(Durable df, Chain.Link link, Object[] args) {
+    private ResonateFuture<Object> runWith(Durable df, Chain.Link link, Object[] args) {
         Args payload = df.packArgs(args);
 
         // A local child's param is write-only -- nothing reads it back -- so it is left empty; that is
@@ -424,7 +433,7 @@ public final class Context {
                 .thenCompose(record -> runAfterCreate(df, req, record, payload, callOpts));
 
         state.spawnedLocals.add(new SpawnedLocal(req.id(), task));
-        return new ResonateFuture(req.id(), task, link.done());
+        return new ResonateFuture<>(req.id(), task, link.done());
     }
 
     private CompletableFuture<Object> runAfterCreate(
@@ -508,7 +517,7 @@ public final class Context {
     // -- rpc / sleep / promise / detached: remote dispatch ------------------------------------
 
     /** Dispatch a registered function by name over the wire (versioned by {@code opts.version}). */
-    public ResonateFuture rpc(String name, Object... args) {
+    public ResonateFuture<Object> rpc(String name, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         TaskData data = new TaskData(Arrays.asList(args), Map.of(), name, opts.version());
@@ -521,7 +530,7 @@ public final class Context {
      * registered under (reverse lookup), carrying its own registered version and threading its {@link
      * Durable} so the settled result is coerced to the declared return type.
      */
-    private ResonateFuture rpc(Method fn, Object... args) {
+    private ResonateFuture<Object> rpc(Method fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         NameVersion recorded = state.registry.reverse(fn);
@@ -536,40 +545,40 @@ public final class Context {
     }
 
     /** Dispatch a function passed as a method reference ({@code Owner::fn}) over the wire. */
-    public <R> ResonateFuture rpc(Fn.F0<R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <R> ResonateFuture<R> rpc(Fn.F0<R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
-    public <A, R> ResonateFuture rpc(Fn.F1<A, R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <A, R> ResonateFuture<R> rpc(Fn.F1<A, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, R> ResonateFuture rpc(Fn.F2<A, B, R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <A, B, R> ResonateFuture<R> rpc(Fn.F2<A, B, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, R> ResonateFuture rpc(Fn.F3<A, B, C, R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <A, B, C, R> ResonateFuture<R> rpc(Fn.F3<A, B, C, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, D, R> ResonateFuture rpc(Fn.F4<A, B, C, D, R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <A, B, C, D, R> ResonateFuture<R> rpc(Fn.F4<A, B, C, D, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
-    public <A, B, C, D, E, R> ResonateFuture rpc(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
-        return rpc(Fn.methodOf(ref), args);
+    public <A, B, C, D, E, R> ResonateFuture<R> rpc(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args).as();
     }
 
     /** Create a timer promise that resolves after {@code duration}. */
-    public ResonateFuture sleep(Duration duration) {
+    public ResonateFuture<Void> sleep(Duration duration) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         PromiseCreateReq req = globalReq(nextId(), duration, null, null, true, null);
-        return remoteFuture(req, link, null);
+        return remoteFuture(req, link, null).as();
     }
 
     /** Create a deferred (DI) promise resolved/rejected by an external party. */
-    public ResonateFuture promise(Duration timeout) {
+    public ResonateFuture<Object> promise(Duration timeout) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         PromiseCreateReq req = globalReq(nextId(), timeout, null, null, false, null);
@@ -581,7 +590,7 @@ public final class Context {
      * {prefix}.d{16hex}}, the lineage origin is reset to the child's own id (a fresh lineage), and the
      * future resolves to the child id without ever suspending.
      */
-    public ResonateFuture detached(String fn, Object... args) {
+    public ResonateFuture<String> detached(String fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
 
@@ -602,15 +611,15 @@ public final class Context {
 
         // Registered for the flush so the create completes before the parent settles, even unawaited.
         state.spawnedRemoteTasks.add(task);
-        return new ResonateFuture(req.id(), task, link.done());
+        return new ResonateFuture<String>(req.id(), task, link.done());
     }
 
-    private ResonateFuture remoteFuture(PromiseCreateReq req, Chain.Link link, Durable df) {
+    private ResonateFuture<Object> remoteFuture(PromiseCreateReq req, Chain.Link link, Durable df) {
         // All three remote callers are external -- a pending ext node sits in the suspension frontier.
         state.tree.addChild(state.id, req.id(), Tree.EXT);
         CompletableFuture<Object> task = awaitRemote(req, link, df);
         state.spawnedRemoteTasks.add(task);
-        return new ResonateFuture(req.id(), task, link.done());
+        return new ResonateFuture<>(req.id(), task, link.done());
     }
 
     private CompletableFuture<Object> awaitRemote(PromiseCreateReq req, Chain.Link link, Durable df) {
