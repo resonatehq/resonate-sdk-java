@@ -76,7 +76,8 @@ public final class Registry {
     // Mirrors the Python SDK passing the function object itself: a durable function is registered
     // by method reference ({@code Owner::fn}), never a raw Method. The {@code F0..F5} overloads
     // select by arity; each resolves the reference to its Method and stores it like the Method form.
-    // {@code version} defaults to 1.
+    // Mirroring Python's {@code register(name, fn, version=1, retry_policy=None)}, {@code version}
+    // defaults to 1 and {@code retryPolicy} defaults to null (no override).
 
     public <R> void register(String name, Fn.F0<R> ref) {
         register(name, Fn.methodOf(ref), 1, null);
@@ -84,6 +85,10 @@ public final class Registry {
 
     public <R> void register(String name, Fn.F0<R> ref, int version) {
         register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <R> void register(String name, Fn.F0<R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
     }
 
     public <A, R> void register(String name, Fn.F1<A, R> ref) {
@@ -94,12 +99,20 @@ public final class Registry {
         register(name, Fn.methodOf(ref), version, null);
     }
 
+    public <A, R> void register(String name, Fn.F1<A, R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
+    }
+
     public <A, B, R> void register(String name, Fn.F2<A, B, R> ref) {
         register(name, Fn.methodOf(ref), 1, null);
     }
 
     public <A, B, R> void register(String name, Fn.F2<A, B, R> ref, int version) {
         register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, R> void register(String name, Fn.F2<A, B, R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
     }
 
     public <A, B, C, R> void register(String name, Fn.F3<A, B, C, R> ref) {
@@ -110,6 +123,10 @@ public final class Registry {
         register(name, Fn.methodOf(ref), version, null);
     }
 
+    public <A, B, C, R> void register(String name, Fn.F3<A, B, C, R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
+    }
+
     public <A, B, C, D, R> void register(String name, Fn.F4<A, B, C, D, R> ref) {
         register(name, Fn.methodOf(ref), 1, null);
     }
@@ -118,12 +135,21 @@ public final class Registry {
         register(name, Fn.methodOf(ref), version, null);
     }
 
+    public <A, B, C, D, R> void register(String name, Fn.F4<A, B, C, D, R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
+    }
+
     public <A, B, C, D, E, R> void register(String name, Fn.F5<A, B, C, D, E, R> ref) {
         register(name, Fn.methodOf(ref), 1, null);
     }
 
     public <A, B, C, D, E, R> void register(String name, Fn.F5<A, B, C, D, E, R> ref, int version) {
         register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, C, D, E, R> void register(
+            String name, Fn.F5<A, B, C, D, E, R> ref, int version, RetryPolicy retryPolicy) {
+        register(name, Fn.methodOf(ref), version, retryPolicy);
     }
 
     /** {@link #get(String, int)} with {@code version=1}. */
@@ -144,6 +170,35 @@ public final class Registry {
      */
     NameVersion reverse(Method fn) {
         return byFn.get(fn);
+    }
+
+    // -- ref-based reverse lookup ------------------------------------------------
+    // Public analogue of Python's reverse(fn): callers pass the function object as a method
+    // reference ({@code Owner::fn}) rather than a raw Method, keeping the public surface ref-based.
+    // The F0..F5 overloads select by arity and funnel through the package-private Method form.
+
+    public <R> NameVersion reverse(Fn.F0<R> ref) {
+        return reverse(Fn.methodOf(ref));
+    }
+
+    public <A, R> NameVersion reverse(Fn.F1<A, R> ref) {
+        return reverse(Fn.methodOf(ref));
+    }
+
+    public <A, B, R> NameVersion reverse(Fn.F2<A, B, R> ref) {
+        return reverse(Fn.methodOf(ref));
+    }
+
+    public <A, B, C, R> NameVersion reverse(Fn.F3<A, B, C, R> ref) {
+        return reverse(Fn.methodOf(ref));
+    }
+
+    public <A, B, C, D, R> NameVersion reverse(Fn.F4<A, B, C, D, R> ref) {
+        return reverse(Fn.methodOf(ref));
+    }
+
+    public <A, B, C, D, E, R> NameVersion reverse(Fn.F5<A, B, C, D, E, R> ref) {
+        return reverse(Fn.methodOf(ref));
     }
 
     /** {@link #getPolicy(String, int)} with {@code version=1}. */

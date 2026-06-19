@@ -37,7 +37,9 @@ public final class HelloWorld {
         try {
             String id = "hello-" + System.nanoTime();
             ResonateHandle<String> handle = r.run(id, HelloWorld::foo, "world");
-            System.out.println(handle.result());
+            String ok = handle.result();
+            assert ok.equals("hello, world!");
+            System.out.println(ok);
         } finally {
             r.stop().join();
         }

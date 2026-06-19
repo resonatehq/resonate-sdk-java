@@ -110,11 +110,6 @@ public final class Durable {
         return name;
     }
 
-    /** Number of user parameters (the ctx slot excluded). */
-    public int userParamCount() {
-        return userTypes.length;
-    }
-
     /**
      * Validate a call's arity and pack it into a serializable {@link Args}.
      *

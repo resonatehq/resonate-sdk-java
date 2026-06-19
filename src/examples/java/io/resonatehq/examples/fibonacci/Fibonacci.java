@@ -1,6 +1,7 @@
 package io.resonatehq.examples.fibonacci;
 
 import io.resonatehq.resonate.Context;
+import io.resonatehq.resonate.Context.ResonateFuture;
 import io.resonatehq.resonate.Fn;
 import io.resonatehq.resonate.Handle.ResonateHandle;
 import io.resonatehq.resonate.Resonate;
@@ -36,31 +37,27 @@ public final class Fibonacci {
         if (n < 2) {
             return n;
         }
-        var f1 = ctx.rpc("fibRpc", n - 1);
-        var f2 = ctx.rpc("fibRpc", n - 2);
-        return num(f1.await()) + num(f2.await());
+        ResonateFuture<Object> f1 = ctx.rpc("fibRpc", n - 1);
+        ResonateFuture<Object> f2 = ctx.rpc("fibRpc", n - 2);
+        return (Integer) f1.await() + (Integer) f2.await();
     }
 
     public static int fibRun(Context ctx, int n) {
         if (n < 2) {
             return n;
         }
-        var f1 = ctx.run(Fibonacci::fibRun, n - 1);
-        var f2 = ctx.run(Fibonacci::fibRun, n - 2);
-        return num(f1.await()) + num(f2.await());
+        ResonateFuture<Integer> f1 = ctx.run(Fibonacci::fibRun, n - 1);
+        ResonateFuture<Integer> f2 = ctx.run(Fibonacci::fibRun, n - 2);
+        return f1.await() + f2.await();
     }
 
     public static int fibMix(Context ctx, int n) {
         if (n < 2) {
             return n;
         }
-        var f1 = ctx.rpc("fibMix", n - 1);
-        var f2 = ctx.run(Fibonacci::fibMix, n - 2);
-        return num(f1.await()) + num(f2.await());
-    }
-
-    private static int num(Object value) {
-        return ((Number) value).intValue();
+        ResonateFuture<Object> f1 = ctx.rpc("fibMix", n - 1);
+        ResonateFuture<Integer> f2 = ctx.run(Fibonacci::fibMix, n - 2);
+        return (Integer) f1.await() + f2.await();
     }
 
     public static void main(String[] args) {
@@ -82,9 +79,9 @@ public final class Fibonacci {
             ResonateHandle<Integer> handle = r.run(id, fns.get(mode), n);
             int out = handle.result();
             assert out == fib(n);
-            ResonateHandle<Integer> got = r.get(id, Integer.class).join();
-            int foo = got.result();
-            assert foo == out;
+            ResonateHandle<Object> got = r.get(id).join();
+            boolean done = got.done();
+            assert done;
             System.out.printf("fib(%d) = %d  [mode=%s]%n", n, out, mode);
         } catch (RuntimeException e) {
             System.out.println("oops " + e);

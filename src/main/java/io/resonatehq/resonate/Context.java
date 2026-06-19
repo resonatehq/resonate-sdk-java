@@ -66,6 +66,8 @@ public final class Context {
             this(null, null, 1, null);
         }
 
+        // Builder-style overrides: change one field, inherit the rest. Mirrors Python's kwargs,
+        // e.g. new Opts().withRetryPolicy(POLICY).
         public Opts withTimeout(Duration timeout) {
             return new Opts(timeout, target, version, retryPolicy);
         }
@@ -291,7 +293,7 @@ public final class Context {
         return state.deps.get(type);
     }
 
-    /** Mint a fresh handle over the same state carrying {@code opts}. The base handle is untouched. */
+    /** Mint a fresh handle over the same state carrying these options. The base handle is untouched. */
     public Context options(Opts opts) {
         return new Context(state, opts);
     }
@@ -583,6 +585,11 @@ public final class Context {
         Chain.Link link = state.chain.link();
         PromiseCreateReq req = globalReq(nextId(), timeout, null, null, false, null);
         return remoteFuture(req, link, null);
+    }
+
+    /** Create a deferred (DI) promise with the default timeout. */
+    public ResonateFuture<Object> promise() {
+        return promise(null);
     }
 
     /**

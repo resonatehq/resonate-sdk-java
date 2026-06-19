@@ -172,8 +172,10 @@ class CodecTest {
     void roundtripListOfRecords() {
         Codec c = codec();
         List<Point> points = List.of(new Point(1, 2), new Point(3, 4));
-        List<Point> out = c.convert(
-                c.decode(c.encode(points)), new com.fasterxml.jackson.core.type.TypeReference<List<Point>>() {});
+        @SuppressWarnings("unchecked")
+        List<Point> out = (List<Point>) c.convert(
+                c.decode(c.encode(points)),
+                new com.fasterxml.jackson.core.type.TypeReference<List<Point>>() {}.getType());
         assertEquals(points, out);
         assertTrue(out.stream().allMatch(p -> p instanceof Point));
     }

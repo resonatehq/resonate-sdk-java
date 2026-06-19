@@ -6,7 +6,6 @@ import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.resonatehq.resonate.Codec.NoopEncryptor;
 import io.resonatehq.resonate.Context.ResonateFuture;
 import io.resonatehq.resonate.Core.ExecFulfilled;
@@ -68,9 +67,6 @@ class InvariantsTest {
     // in a handful of steps; a generous cap keeps the walk well past any body's settling depth while
     // bounding the loop.
     private static final int MAX_ROUNDS = 1_000;
-
-    private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final long I64_MAX = Long.MAX_VALUE;
 
     // ── Self-contained in-memory promise store (create / settle only) ────────
 
@@ -334,7 +330,7 @@ class InvariantsTest {
 
     /** Spawn two rpcs and await one -- the child folds both todos up. */
     static int childFansOutRpcs(Context ctx) {
-        ResonateFuture a = ctx.rpc("a");
+        ResonateFuture<Object> a = ctx.rpc("a");
         ctx.rpc("b");
         a.await();
         return 2;
@@ -352,9 +348,9 @@ class InvariantsTest {
 
     /** No remote work: fulfills on the first run -- the degenerate case. */
     static Object allLocal(Context ctx) {
-        ResonateFuture a = ctx.run(InvariantsTest::leaf);
-        ResonateFuture b = ctx.run(InvariantsTest::leaf);
-        return (int) a.await() + (int) b.await();
+        ResonateFuture<Integer> a = ctx.run(InvariantsTest::leaf);
+        ResonateFuture<Integer> b = ctx.run(InvariantsTest::leaf);
+        return a.await() + b.await();
     }
 
     /** Spawn a settled local subtree (run -> run) then an rpc -- the canonical prune. */
@@ -385,7 +381,7 @@ class InvariantsTest {
 
     /** Three rpcs spawned, one awaited -- settling each shrinks the frontier. */
     static Object fanout(Context ctx) {
-        ResonateFuture a = ctx.rpc("a");
+        ResonateFuture<Object> a = ctx.rpc("a");
         ctx.rpc("b");
         ctx.rpc("c");
         a.await();
@@ -408,8 +404,8 @@ class InvariantsTest {
     /** tree.md §9's phased body: settle one await, spawn two, then drain each. */
     static Object phasedRpcs(Context ctx) {
         ctx.rpc("a").await();
-        ResonateFuture b = ctx.rpc("b");
-        ResonateFuture c = ctx.rpc("c");
+        ResonateFuture<Object> b = ctx.rpc("b");
+        ResonateFuture<Object> c = ctx.rpc("c");
         b.await();
         c.await();
         return 0;
@@ -422,9 +418,9 @@ class InvariantsTest {
 
     /** Two local children, each suspended on its own rpc -- a frontier across siblings. */
     static Object parallelSuspendedLocals(Context ctx) {
-        ResonateFuture a = ctx.run(InvariantsTest::childBlocksOnRpc);
-        ResonateFuture b = ctx.run(InvariantsTest::childBlocksOnRpc);
-        return (int) a.await() + (int) b.await();
+        ResonateFuture<Integer> a = ctx.run(InvariantsTest::childBlocksOnRpc);
+        ResonateFuture<Integer> b = ctx.run(InvariantsTest::childBlocksOnRpc);
+        return a.await() + b.await();
     }
 
     /** Run one local child holding two Ext descendants -- one Int, two frontier leaves. */

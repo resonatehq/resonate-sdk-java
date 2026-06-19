@@ -10,6 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.resonatehq.resonate.Tree.Node;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -673,5 +675,70 @@ class TreeTest {
         }
         assertEquals(List.of(), t3.frontier());
         t3.wellFormed(Tree.DONE, List.of());
+    }
+
+    // ── concurrency ────────────────────────────────────────────────────────────
+
+    /**
+     * Sibling {@code ctx.run} children run on real pool threads, all mutating one shared tree. Without
+     * the instance lock the backing {@code LinkedHashMap} corrupts under concurrent {@code put}: a
+     * whole-tree read sees a half-applied {@code addChild} and throws (NPE, {@code
+     * ConcurrentModificationException}, or a bogus {@code U2}/{@code D1} {@link AssertionError}). With
+     * the lock every read observes a consistent snapshot. Hammer it and assert nothing throws.
+     */
+    @Test
+    void concurrentMutationAndReadsAreConsistent() throws InterruptedException {
+        Tree t = new Tree("root");
+        int writers = 8;
+        int perWriter = 500;
+        ConcurrentLinkedQueue<Throwable> failures = new ConcurrentLinkedQueue<>();
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(writers + 1);
+
+        for (int w = 0; w < writers; w++) {
+            final int id = w;
+            new Thread(() -> {
+                        try {
+                            start.await();
+                            for (int i = 0; i < perWriter; i++) {
+                                String child = "root." + id + "." + i;
+                                t.addChild("root", child, Tree.EXT);
+                                t.settle(child); // settled ext leaf keeps the tree well-formed (frontier empty)
+                            }
+                        } catch (Throwable e) {
+                            failures.add(e);
+                        } finally {
+                            done.countDown();
+                        }
+                    })
+                    .start();
+        }
+
+        // Reader races the writers: whole-tree walks must never observe a torn map.
+        new Thread(() -> {
+                    try {
+                        start.await();
+                        for (int i = 0; i < 2000; i++) {
+                            // These never throw on a *valid* tree, even mid-add (a pending ext leaf is a
+                            // legal transient). Corruption (torn map) surfaces here as NPE/CME/AssertionError.
+                            t.frontier();
+                            t.ids();
+                            t.size();
+                            t.useful();
+                        }
+                    } catch (Throwable e) {
+                        failures.add(e);
+                    } finally {
+                        done.countDown();
+                    }
+                })
+                .start();
+
+        start.countDown();
+        done.await();
+
+        assertTrue(failures.isEmpty(), () -> "concurrent access threw: " + failures);
+        assertEquals(1 + writers * perWriter, t.size());
+        t.wellFormed(Tree.DONE, List.of());
     }
 }

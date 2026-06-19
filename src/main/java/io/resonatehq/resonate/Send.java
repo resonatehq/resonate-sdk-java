@@ -140,7 +140,12 @@ public final class Send {
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonPropertyOrder({"corrId", "version", "auth"})
-    public record Head(@JsonProperty("corrId") String corrId, String version, String auth) {}
+    public record Head(@JsonProperty("corrId") String corrId, String version, String auth) {
+        /** Mirrors Python's {@code auth: str | None = None} default. */
+        public Head(String corrId, String version) {
+            this(corrId, version, null);
+        }
+    }
 
     /** A protocol request envelope: {@code { kind, head, data }}. */
     @JsonPropertyOrder({"kind", "head", "data"})

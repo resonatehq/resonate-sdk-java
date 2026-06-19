@@ -154,8 +154,8 @@ class CoreTest {
 
     /** Create two pending remote children, then await -- suspends on the first. */
     static int wfSuspendOnTwo(Context ctx, int n) {
-        ResonateFuture fut1 = ctx.rpc("childA");
-        ResonateFuture fut2 = ctx.rpc("childB");
+        ResonateFuture<Object> fut1 = ctx.rpc("childA");
+        ResonateFuture<Object> fut2 = ctx.rpc("childB");
         fut1.await();
         fut2.await();
         return n;

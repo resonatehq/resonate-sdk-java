@@ -341,8 +341,8 @@ public final class Resonate {
      * to the by-name form of {@code run} / {@code rpc}; the by-object form recovers its version from
      * the registration.
      */
-    public Resonate options(Duration timeout, String target, int version) {
-        return new Resonate(this, new Opts(timeout, target, version, null));
+    public Resonate options(Opts opts) {
+        return new Resonate(this, opts);
     }
 
     /** This handle's options. */
@@ -356,78 +356,113 @@ public final class Resonate {
      * Register a durable function, always passed as a method reference ({@code Owner::fn}) -- never a
      * raw {@link Method}. The {@code F1..F5} overloads select by the function's arity. The single-arg
      * form registers under the method's own name at version 1; the {@code (ref, name, version)} form
-     * overrides both, and the same name may be registered at several versions. Each overload returns
+     * overrides both, and the {@code (ref, name, version, retryPolicy)} form additionally sets a
+     * per-function {@link RetryPolicy} (the SDK-wide default when null). The same name may be
+     * registered at several versions. Each overload returns
      * its {@code ref} unchanged (mirroring Python's {@code return fn}) so it stays usable directly with
      * {@code run}/{@code rpc} or a workflow's {@code ctx.run}.
      */
     public <R> Fn.F0<R> register(Fn.F0<R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <R> Fn.F0<R> register(Fn.F0<R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
+        return ref;
+    }
+
+    public <R> Fn.F0<R> register(Fn.F0<R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
         return ref;
     }
 
     public <A, R> Fn.F1<A, R> register(Fn.F1<A, R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <A, R> Fn.F1<A, R> register(Fn.F1<A, R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
+        return ref;
+    }
+
+    public <A, R> Fn.F1<A, R> register(Fn.F1<A, R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
         return ref;
     }
 
     public <A, B, R> Fn.F2<A, B, R> register(Fn.F2<A, B, R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <A, B, R> Fn.F2<A, B, R> register(Fn.F2<A, B, R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
+        return ref;
+    }
+
+    public <A, B, R> Fn.F2<A, B, R> register(Fn.F2<A, B, R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
         return ref;
     }
 
     public <A, B, C, R> Fn.F3<A, B, C, R> register(Fn.F3<A, B, C, R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <A, B, C, R> Fn.F3<A, B, C, R> register(Fn.F3<A, B, C, R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
+        return ref;
+    }
+
+    public <A, B, C, R> Fn.F3<A, B, C, R> register(
+            Fn.F3<A, B, C, R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
         return ref;
     }
 
     public <A, B, C, D, R> Fn.F4<A, B, C, D, R> register(Fn.F4<A, B, C, D, R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <A, B, C, D, R> Fn.F4<A, B, C, D, R> register(Fn.F4<A, B, C, D, R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
+        return ref;
+    }
+
+    public <A, B, C, D, R> Fn.F4<A, B, C, D, R> register(
+            Fn.F4<A, B, C, D, R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
         return ref;
     }
 
     public <A, B, C, D, E, R> Fn.F5<A, B, C, D, E, R> register(Fn.F5<A, B, C, D, E, R> ref) {
-        registerRef(ref, null, 1);
+        registerRef(ref, null, 1, null);
         return ref;
     }
 
     public <A, B, C, D, E, R> Fn.F5<A, B, C, D, E, R> register(Fn.F5<A, B, C, D, E, R> ref, String name, int version) {
-        registerRef(ref, name, version);
+        registerRef(ref, name, version, null);
         return ref;
     }
 
-    /** Resolve a reference to its {@link Method} and register it under {@code name} (own name if null) at {@code version}. */
-    private void registerRef(java.io.Serializable ref, String name, int version) {
+    public <A, B, C, D, E, R> Fn.F5<A, B, C, D, E, R> register(
+            Fn.F5<A, B, C, D, E, R> ref, String name, int version, RetryPolicy retryPolicy) {
+        registerRef(ref, name, version, retryPolicy);
+        return ref;
+    }
+
+    /** Resolve a reference to its {@link Method} and register it under {@code name} (own name if null) at {@code version} with an optional per-function {@code retryPolicy}. */
+    private void registerRef(java.io.Serializable ref, String name, int version, RetryPolicy retryPolicy) {
         Method fn = Fn.methodOf(ref);
         String regName = name != null ? name : fn.getName();
         if (regName.isEmpty()) {
             throw new ApplicationError("register: a name is required for an anonymous function");
         }
-        registry.register(regName, fn, version, null);
+        registry.register(regName, fn, version, retryPolicy);
     }
 
     // -- run --------------------------------------------------------------------
@@ -607,25 +642,16 @@ public final class Resonate {
      * Return a handle for an existing promise.
      *
      * <p>Asynchronous: the listener registration is what surfaces a {@link ServerError} (404) when the
-     * promise does not exist. The result is untyped ({@code Object}) -- there is no local function to
-     * read a return annotation from.
+     * promise does not exist. The result is untyped ({@code Object}, the analogue of Python's {@code
+     * Any}) -- there is no local function to read a return annotation from.
      */
     public CompletableFuture<ResonateHandle<Object>> get(String id) {
-        return getResolved(id, Object.class);
-    }
-
-    /** Typed {@link #get(String)}: the handle's result decodes to (and is typed as) {@code type}. */
-    public <T> CompletableFuture<ResonateHandle<T>> get(String id, Class<T> type) {
-        return getResolved(id, type);
-    }
-
-    private <T> CompletableFuture<ResonateHandle<T>> getResolved(String id, Type type) {
         String pid = prefixId(id);
         Sub s = subscribe(pid);
         Subscription sub = s.sub();
 
         if (!s.isNew()) {
-            return CompletableFuture.completedFuture(handleFor(pid, sub, type));
+            return CompletableFuture.completedFuture(handleFor(pid, sub));
         }
 
         return sender.promiseRegisterListener(pid, network.unicast()).handle((record, exc) -> {
@@ -643,17 +669,12 @@ public final class Resonate {
             if (!"pending".equals(record.state())) {
                 settleAndCleanup(pid, sub, record.state(), record.value());
             }
-            return this.<T>handleFor(pid, sub, type);
+            return handleFor(pid, sub);
         });
     }
 
-    private <T> ResonateHandle<T> handleFor(String id, Subscription sub, Type type) {
-        return new ResonateHandle<>(id, sub, codec, type, CompletableFuture.completedFuture(null));
-    }
-
-    /** Create a schedule for periodic execution (no args, version 1, default timeout). */
-    public CompletableFuture<ResonateSchedule> schedule(String id, String cron, String funcName) {
-        return schedule(id, cron, funcName, List.of(), Map.of(), null, 1);
+    private ResonateHandle<Object> handleFor(String id, Subscription sub) {
+        return new ResonateHandle<>(id, sub, codec, Object.class, CompletableFuture.completedFuture(null));
     }
 
     /** Create a schedule for periodic function execution. */

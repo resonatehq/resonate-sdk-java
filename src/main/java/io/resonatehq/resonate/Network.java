@@ -28,6 +28,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -1558,9 +1559,11 @@ public interface Network {
         static final double MAX_BACKOFF_SECS = 60;
         public static final int DEFAULT_CONN_LIMIT = 256;
 
-        // Shared daemon pool for the blocking send/backoff loop so a request parked in its 60s
-        // backoff never starves the common ForkJoinPool. Lives for the JVM; threads idle-reap.
-        private static final ExecutorService SEND_EXECUTOR = Executors.newCachedThreadPool(r -> {
+        // Per-instance daemon pool for the blocking send/backoff loop so a request parked in its 60s
+        // backoff never starves the common ForkJoinPool. Owned by this network so stop() can drain it:
+        // the send future's .thenApply continuations (e.g. building Send.Created) run on these threads,
+        // and if one ran during JVM shutdown it would NoClassDefFoundError on a not-yet-loaded class.
+        private final ExecutorService sendExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "resonate-http-send");
             t.setDaemon(true);
             return t;
@@ -1643,6 +1646,16 @@ public interface Network {
                 stopSignaled = true;
                 stopMonitor.notifyAll();
             }
+            // Close the session first so the SSE long-poll and any in-flight POST are cancelled
+            // deterministically (client.shutdownNow), instead of relying on Thread.interrupt
+            // propagating through HttpClient.send. Guarded by the same monitor as ensureSession so a
+            // send/SSE thread cannot resurrect the session we are tearing down.
+            synchronized (this) {
+                if (session != null) {
+                    session.close();
+                    session = null;
+                }
+            }
             Thread handle = sseThread;
             sseThread = null;
             if (handle != null) {
@@ -1653,13 +1666,17 @@ public interface Network {
                     Thread.currentThread().interrupt();
                 }
             }
-            // Guarded by the same monitor as ensureSession so a send/SSE thread cannot resurrect
-            // the session we are tearing down.
-            synchronized (this) {
-                if (session != null) {
-                    session.close();
-                    session = null;
+            // Drain the send pool so no send continuation runs on a pool thread after we return: with
+            // running=false and the session closed every queued/in-flight send fails fast, so this
+            // settles quickly and nothing survives into JVM shutdown to NoClassDefFoundError.
+            sendExecutor.shutdown();
+            try {
+                if (!sendExecutor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    sendExecutor.shutdownNow();
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                sendExecutor.shutdownNow();
             }
             subscribers.clear();
             return CompletableFuture.completedFuture(null);
@@ -1667,7 +1684,15 @@ public interface Network {
 
         @Override
         public CompletableFuture<String> send(String req) {
-            return CompletableFuture.supplyAsync(() -> sendBlocking(req), SEND_EXECUTOR);
+            if (!running) {
+                return CompletableFuture.failedFuture(new HttpError(new RuntimeException("network has been stopped")));
+            }
+            try {
+                return CompletableFuture.supplyAsync(() -> sendBlocking(req), sendExecutor);
+            } catch (RejectedExecutionException e) {
+                // stop() raced us and shut the pool down; surface the same stopped-network error.
+                return CompletableFuture.failedFuture(new HttpError(e));
+            }
         }
 
         private String sendBlocking(String req) {

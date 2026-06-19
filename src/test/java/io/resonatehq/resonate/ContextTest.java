@@ -560,7 +560,7 @@ class ContextTest {
         Context ctx = root();
         Context scoped = ctx.options(new Opts().withTimeout(Duration.ofSeconds(5)));
         assertNotSame(scoped, ctx);
-        assertEquals(new Opts().withTimeout(Duration.ofSeconds(5)), scoped.opts());
+        assertEquals(new Opts(Duration.ofSeconds(5), null, 1, null), scoped.opts());
         assertEquals(new Opts(), ctx.opts());
     }
 
@@ -569,7 +569,7 @@ class ContextTest {
         Context ctx = root();
         // Each options() call takes a complete Opts; a fresh Opts only sets version, so target stays default.
         Context scoped = ctx.options(new Opts().withTarget("worker-1")).options(new Opts().withVersion(2));
-        assertEquals(new Opts().withVersion(2), scoped.opts());
+        assertEquals(new Opts(null, null, 2, null), scoped.opts());
         assertEquals(null, scoped.opts().target());
     }
 
@@ -596,8 +596,8 @@ class ContextTest {
         Context ctx = root();
         Context a = ctx.options(new Opts().withTimeout(Duration.ofSeconds(5)));
         Context b = ctx.options(new Opts().withTarget("worker-2"));
-        assertEquals(new Opts().withTimeout(Duration.ofSeconds(5)), a.opts());
-        assertEquals(new Opts().withTarget("worker-2"), b.opts());
+        assertEquals(new Opts(Duration.ofSeconds(5), null, 1, null), a.opts());
+        assertEquals(new Opts(null, "worker-2", 1, null), b.opts());
         assertNotEquals(a.opts(), b.opts());
         assertEquals(new Opts(), ctx.opts());
     }
@@ -623,8 +623,8 @@ class ContextTest {
     @Test
     void optionsHandlesShareSpawnedState() {
         Context ctx = root();
-        ResonateFuture f1 = ctx.options(new Opts().withTarget("a")).rpc("fn");
-        ResonateFuture f2 = ctx.options(new Opts().withTarget("b")).rpc("fn");
+        ResonateFuture<Object> f1 = ctx.options(new Opts().withTarget("a")).rpc("fn");
+        ResonateFuture<Object> f2 = ctx.options(new Opts().withTarget("b")).rpc("fn");
         assertThrows(Suspended.class, f1::await);
         assertThrows(Suspended.class, f2::await);
         assertEquals(List.of("root.1", "root.2"), ctx.spawnedRemote());
@@ -639,7 +639,7 @@ class ContextTest {
     @Test
     void futureIdReturnsIdAfterCreate() {
         Context ctx = root();
-        ResonateFuture fut = ctx.run(ContextTest::doubleFn, 21);
+        ResonateFuture<Object> fut = ctx.run(ContextTest::doubleFn, 21);
         assertEquals("root.1", fut.id());
         assertEquals(42, fut.await());
     }
@@ -987,7 +987,7 @@ class ContextTest {
         Context ctx = root();
         String childId = detachedId("root", "root.1");
         long before = Send.nowMs();
-        ctx.options(new Opts().withTarget("worker-1").withTimeout(Duration.ofSeconds(30)))
+        ctx.options(new Opts().withTimeout(Duration.ofSeconds(30)).withTarget("worker-1"))
                 .detached("fn")
                 .await();
         long after = Send.nowMs();
@@ -999,7 +999,7 @@ class ContextTest {
     @Test
     void detachedOptionsDoNotLeakToBaseContext() {
         Context ctx = root();
-        ctx.options(new Opts().withTarget("x").withTimeout(Duration.ofSeconds(30)))
+        ctx.options(new Opts().withTimeout(Duration.ofSeconds(30)).withTarget("x"))
                 .detached("fn")
                 .await();
         assertEquals(new Opts(), ctx.opts());
@@ -1028,7 +1028,7 @@ class ContextTest {
     @Test
     void detachedBgTaskRegisteredForFlush() {
         Context ctx = root();
-        ResonateFuture fut = ctx.detached("fn");
+        ResonateFuture<String> fut = ctx.detached("fn");
         assertEquals(1, ctx.spawnedRemoteTasks().size());
         assertSame(fut.task(), ctx.spawnedRemoteTasks().get(0));
         ctx.flushLocalWork().join();
@@ -1039,7 +1039,7 @@ class ContextTest {
     void detachedCreatePromiseCompletesByFlushWhenUnawaited() {
         Context ctx = root();
         String childId = detachedId("root", "root.1");
-        ResonateFuture fut = ctx.detached("remote_fn", 1, 2);
+        ResonateFuture<String> fut = ctx.detached("remote_fn", 1, 2);
         // The create is driven through the chain; join the flush to guarantee it completed.
         ctx.flushLocalWork().join();
         assertEquals("pending", ctx.effects().cache().get(childId).state());

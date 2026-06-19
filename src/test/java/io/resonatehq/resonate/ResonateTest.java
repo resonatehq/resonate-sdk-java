@@ -528,7 +528,8 @@ class ResonateTest {
         r.register(ResonateTest::implOne, "impl", 1);
         r.register(ResonateTest::implTwo, "impl", 2);
         assertEquals("one", r.run("x1", "impl").result()); // default version 1
-        assertEquals("two", r.options(null, null, 2).run("x2", "impl").result());
+        assertEquals(
+                "two", r.options(new Opts().withVersion(2)).run("x2", "impl").result());
     }
 
     @Test
@@ -640,7 +641,7 @@ class ResonateTest {
         Resonate r = local();
         r.register(ResonateTest::versioned, "impl", 4);
         // The object carries its own version, so options(version=9) is ignored.
-        r.options(null, null, 9).rpc("rpc-ver", ResonateTest::versioned);
+        r.options(new Opts().withVersion(9)).rpc("rpc-ver", ResonateTest::versioned);
         PromiseRecord record = waitForPromise(r, "rpc-ver");
         Map<?, ?> data = (Map<?, ?>) record.param().data();
         assertEquals("impl", data.get("func"));
@@ -703,7 +704,7 @@ class ResonateTest {
     @Test
     void optionsMintsNewHandleSharingState() {
         Resonate r = local();
-        Resonate scoped = r.options(Duration.ofSeconds(1), null, 1);
+        Resonate scoped = r.options(new Opts().withTimeout(Duration.ofSeconds(1)));
         assertNotSame(r, scoped);
         // The clone shares everything by reference: the rebound-state container and the wiring alike.
         assertSame(r.runtime, scoped.runtime);
@@ -716,8 +717,8 @@ class ResonateTest {
     @Test
     void optionsHandlesAreHoldableAndReusable() {
         Resonate r = local();
-        Resonate a = r.options(null, "worker-a", 1);
-        Resonate b = r.options(null, "worker-b", 1);
+        Resonate a = r.options(new Opts().withTarget("worker-a"));
+        Resonate b = r.options(new Opts().withTarget("worker-b"));
         a.rpc("held-a", "remote");
         b.rpc("held-b", "remote");
         a.rpc("held-a2", "remote"); // a still carries worker-a after b was created and used
@@ -731,7 +732,7 @@ class ResonateTest {
     @Test
     void optionsBareNameTargetRewritten() {
         Resonate r = local();
-        r.options(null, "my-worker", 1).rpc("t-bare", "remote");
+        r.options(new Opts().withTarget("my-worker")).rpc("t-bare", "remote");
         assertEquals("local://any@my-worker", waitForPromise(r, "t-bare").tags().get("resonate:target"));
     }
 
@@ -739,7 +740,7 @@ class ResonateTest {
     void optionsUrlTargetPassesThrough() {
         Resonate r = local();
         String url = "https://remote:9000/workers/hello";
-        r.options(null, url, 1).rpc("t-url", "remote");
+        r.options(new Opts().withTarget(url)).rpc("t-url", "remote");
         assertEquals(url, waitForPromise(r, "t-url").tags().get("resonate:target"));
     }
 
@@ -756,7 +757,7 @@ class ResonateTest {
     @Test
     void rpcVersionComesFromOpts() {
         Resonate r = local();
-        r.options(null, null, 7).rpc("t-rpc-ver", "remote");
+        r.options(new Opts().withVersion(7)).rpc("t-rpc-ver", "remote");
         PromiseRecord record = waitForPromise(r, "t-rpc-ver");
         assertEquals(7, ((Map<?, ?>) record.param().data()).get("version"));
     }
@@ -765,7 +766,9 @@ class ResonateTest {
     void optionsAppliesToRunTarget() {
         Resonate r = local();
         r.register(ResonateTest::noop);
-        r.options(null, "my-target", 1).run("rt2", ResonateTest::noop).result();
+        r.options(new Opts().withTarget("my-target"))
+                .run("rt2", ResonateTest::noop)
+                .result();
         PromiseRecord record = await(r.promises.get("rt2"));
         assertEquals("local://any@my-target", record.tags().get("resonate:target"));
     }
@@ -881,7 +884,8 @@ class ResonateTest {
     @Test
     void scheduleCreatesAndDeletes() {
         Resonate r = local();
-        ResonateSchedule schedule = await(r.schedule("my-schedule", "*/5 * * * *", "my-func"));
+        ResonateSchedule schedule =
+                await(r.schedule("my-schedule", "*/5 * * * *", "my-func", List.of(), Map.of(), null, 1));
         assertEquals("my-schedule", schedule.name());
         await(schedule.delete()); // does not raise
     }

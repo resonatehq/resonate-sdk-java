@@ -95,12 +95,19 @@ public final class Handle {
 
         /**
          * Block until the promise completes, returning the result or raising, the blocking analogue
-         * of Python's {@code await handle.result()}. A durable rejection is unwrapped from its {@link
-         * CompletionException} wrapper so it surfaces as the original throwable.
+         * of Python's {@code await handle.result()}.
+         *
+         * <p>Java has no event loop to interleave creation with this wait, so the call chains through
+         * {@code created} first: it only exits once the durable promise is known to exist, and a
+         * creation failure surfaces here instead of hanging forever on a subscription that will never
+         * settle. A durable rejection is unwrapped from its {@link CompletionException} wrapper so it
+         * surfaces as the original throwable.
          */
         public T result() {
             try {
-                return sub.await().thenApply(this::decodeResult).join();
+                return created.thenCompose(v -> sub.await())
+                        .thenApply(this::decodeResult)
+                        .join();
             } catch (CompletionException exc) {
                 Throwable cause = exc.getCause() != null ? exc.getCause() : exc;
                 if (cause instanceof RuntimeException re) {

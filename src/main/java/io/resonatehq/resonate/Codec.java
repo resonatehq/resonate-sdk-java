@@ -142,27 +142,12 @@ public final class Codec {
     }
 
     /**
-     * Coerce an already-decoded value into a generic {@code type}.
-     *
-     * <p>The {@link TypeReference} overload of {@link #convert(Object, Class)} for shapes whose
-     * element types are erased on a raw {@link Class} — e.g. {@code List<Point>}, where the plain
-     * {@code Class} form cannot express that each element must reshape into {@code Point}. Mirrors
-     * the Python list-of-structs round-trip, which {@code msgspec.convert} expresses with a
-     * parameterized type directly.
-     */
-    public <T> T convert(Object value, com.fasterxml.jackson.core.type.TypeReference<T> type) {
-        try {
-            return MAPPER.convertValue(value, type);
-        } catch (IllegalArgumentException exc) {
-            throw new SerializationError(exc);
-        }
-    }
-
-    /**
      * Coerce an already-decoded value into a reflective {@link java.lang.reflect.Type}.
      *
      * <p>The {@link java.lang.reflect.Type} overload of {@link #convert(Object, Class)}, used when the
-     * target type is recovered at runtime — e.g. {@link Durable#returnType()} for a top-level
+     * target type is recovered at runtime — and the carrier for parameterized shapes whose element
+     * types are erased on a raw {@link Class}, e.g. {@code List<Point>} (mirroring Python's
+     * list-of-structs round-trip, which {@code msgspec.convert} expresses with a parameterized type) — e.g. {@link Durable#returnType()} for a top-level
      * {@code run} / {@code rpc} result, which may be a plain class, a primitive, or a parameterized
      * container. A pass-through {@code Object} target reshapes nothing, matching Python's {@code Any}.
      */

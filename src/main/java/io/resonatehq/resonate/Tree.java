@@ -25,9 +25,14 @@ import java.util.stream.Collectors;
  * <p>Two implementation notes:
  *
  * <ul>
- *   <li><b>No lock.</b> In Python every writer is an asyncio task on a single event loop; here every
- *       writer runs on the worker that owns the attempt, and no public method blocks between read and
- *       write, so the node map and the per-node child list cannot interleave.
+ *   <li><b>One lock.</b> In Python every writer is an asyncio task on a single event loop, so the
+ *       structure needs no lock. This runtime executes logically-concurrent child bodies on a real
+ *       thread pool (sibling {@code ctx.run} continuations run in parallel), so every public method
+ *       is {@code synchronized} on the instance monitor: the node map and the per-node child lists are
+ *       guarded as a unit, and a whole-tree read ({@link #wellFormed} / {@link #frontier} /
+ *       {@link #useful}) can never observe a half-applied {@link #addChild}. The lock is coarse but
+ *       cheap — no public method blocks on I/O (the network create/settle happens outside the tree),
+ *       so contention is negligible and there is no deadlock risk.
  *   <li><b>Predicates raise.</b> Following the repo-wide convention ({@link Codec} / core), {@link
  *       #useful} and {@link #wellFormed} return {@code void} and raise {@link AssertionError} with a
  *       multi-line message on violation. The tree is a pure assertion layer, so a failed check is a
@@ -154,17 +159,17 @@ public final class Tree {
     }
 
     /** Whether {@code id} exists in the tree. */
-    public boolean has(String id) {
+    public synchronized boolean has(String id) {
         return nodes.containsKey(id);
     }
 
     /** Total node count. */
-    public int size() {
+    public synchronized int size() {
         return nodes.size();
     }
 
     /** Every node id, in insertion order. */
-    public List<String> ids() {
+    public synchronized List<String> ids() {
         return new ArrayList<>(nodes.keySet());
     }
 
@@ -174,7 +179,7 @@ public final class Tree {
      * <p>Returns a copy (including a fresh {@code children} list) so callers cannot mutate tree state
      * through the handle.
      */
-    public Node get(String id) {
+    public synchronized Node get(String id) {
         Node node = nodes.get(id);
         return node == null ? null : new Node(node.id, node.type, node.kind, node.children);
     }
@@ -188,7 +193,7 @@ public final class Tree {
      * replay that re-walks the same body does not duplicate nodes or re-append to the parent's child
      * list). The parent must already be in the tree.
      */
-    public boolean addChild(String parent, String id, String type) {
+    public synchronized boolean addChild(String parent, String id, String type) {
         if (!nodes.containsKey(parent)) {
             throw new AssertionError("unknown parent '" + parent + "'");
         }
@@ -201,7 +206,7 @@ public final class Tree {
     }
 
     /** Mark {@code id} settled; monotonic, no-op if already settled or unknown. */
-    public void settle(String id) {
+    public synchronized void settle(String id) {
         Node node = nodes.get(id);
         if (node == null) {
             return;
@@ -224,7 +229,7 @@ public final class Tree {
      * body created but never reached an {@code await} on. Invariant S4 ({@code todos subset frontier})
      * connects the two.
      */
-    public List<String> frontier() {
+    public synchronized List<String> frontier() {
         List<String> out = new ArrayList<>();
         Deque<String> stack = new ArrayDeque<>();
         stack.push(root);
@@ -266,7 +271,7 @@ public final class Tree {
      * <p>A suspended-local Int node is kept alive only by an Ext-pending descendant somewhere in its
      * subtree.
      */
-    public void useful() {
+    public synchronized void useful() {
         List<String> dead = new ArrayList<>();
         for (Map.Entry<String, Node> entry : nodes.entrySet()) {
             String id = entry.getKey();
@@ -323,7 +328,7 @@ public final class Tree {
      *
      * <p>Raises {@link AssertionError} on the first violated rule.
      */
-    public void wellFormed(String status, List<String> todos) {
+    public synchronized void wellFormed(String status, List<String> todos) {
         // U1 — the root is settled when the task is fulfilled, never by the body's own execution pass.
         Node rootNode = nodes.get(root);
         if (!INT.equals(rootNode.type())) {
@@ -447,7 +452,7 @@ public final class Tree {
      *       drop, so prefix is exactly the right shape.
      * </ul>
      */
-    public boolean isPruneOf(Tree other) {
+    public synchronized boolean isPruneOf(Tree other) {
         for (String id : nodes.keySet()) {
             if (!other.nodes.containsKey(id)) {
                 return false; // added a node other lacks
@@ -494,7 +499,7 @@ public final class Tree {
      *       allows.
      * </ul>
      */
-    public boolean isExtensionOf(Tree other) {
+    public synchronized boolean isExtensionOf(Tree other) {
         for (String id : other.nodes.keySet()) {
             if (!nodes.containsKey(id)) {
                 return false; // other has a node self lacks -> removed != ∅
@@ -539,7 +544,7 @@ public final class Tree {
      *       both facets satisfies each under its own projection.
      * </ul>
      */
-    public boolean isPruneAndExtensionOf(Tree other) {
+    public synchronized boolean isPruneAndExtensionOf(Tree other) {
         if (!sharedTypeStable(other)) {
             return false;
         }
@@ -581,7 +586,7 @@ public final class Tree {
      * order, so the output is a deterministic function of the (body, cache) pair — exactly the
      * children-as-prefix replay property.
      */
-    public String print() {
+    public synchronized String print() {
         List<String> lines = new ArrayList<>();
         printNode(root, "", "", lines);
         return String.join("\n", lines);

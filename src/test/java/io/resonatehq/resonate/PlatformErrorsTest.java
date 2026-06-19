@@ -593,8 +593,8 @@ class PlatformErrorsTest {
         Context ctx = Context.root(
                 "r", "r", "r", FAR_FUTURE, "f", effects, Core.IDENTITY_TARGET_RESOLVER, new Dependencies(), null, null);
 
-        ResonateFuture fut1 = ctx.rpc("a");
-        ResonateFuture fut2 = ctx.rpc("b");
+        ResonateFuture<Object> fut1 = ctx.rpc("a");
+        ResonateFuture<Object> fut2 = ctx.rpc("b");
 
         // Link 1's failure settles its own `created` AND propagates down the chain, so link 2's id()
         // resolves (with the error) instead of hanging.

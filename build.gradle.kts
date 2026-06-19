@@ -32,8 +32,10 @@ dependencies {
 }
 
 // Apply a specific Java toolchain to ease working on different environments.
+// Override with -PjavaVersion=24 to test against newer JDKs (CI matrices this).
 java {
-    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    val javaVersion = (findProperty("javaVersion") as String? ?: "21").toInt()
+    toolchain { languageVersion = JavaLanguageVersion.of(javaVersion) }
 }
 
 tasks.named<Test>("test") { useJUnitPlatform() }
