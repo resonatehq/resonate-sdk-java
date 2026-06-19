@@ -19,34 +19,38 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
 
-    # Mirrors Python's python-version matrix. Note: the Gradle toolchain doubles
-    # as the minimum runtime, so 21 is the floor (code compiled for 21 can't run
-    # on older JDKs). -PjavaVersion is read by build.gradle.kts.
+    # The library is always compiled for Java 21 (the bytecode we ship); the
+    # matrix only varies the JVM the tests RUN on, proving the 21 artifact works
+    # on newer runtimes. -PtestJavaVersion is read by build.gradle.kts.
     strategy:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        java-version: ["21"]
+        test-java-version: ["21", "24", "25"]
 
     steps:
       - uses: actions/checkout@v4
 
+      # Install both JDKs so Gradle can compile with 21 and run tests on the
+      # matrix version. The last entry sets JAVA_HOME / runs Gradle itself.
       - name: set up java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: ${{ matrix.java-version }}
+          java-version: |
+            ${{ matrix.test-java-version }}
+            21
 
       - name: setup gradle
         uses: gradle/actions/setup-gradle@v4
 
       - name: check linting
-        run: ./gradlew spotlessCheck -PjavaVersion=${{ matrix.java-version }}
+        run: ./gradlew spotlessCheck
 
       # TODO: missing type-check step. Python ran `ty check`; Java type-checks
       # during compilation (covered by the test task), so no separate step.
       - name: run tests
-        run: ./gradlew test -PjavaVersion=${{ matrix.java-version }}
+        run: ./gradlew test -PtestJavaVersion=${{ matrix.test-java-version }}
 
       # TODO: missing coverage + codecov upload. Add the `jacoco` plugin to
       # build.gradle, run `./gradlew test jacocoTestReport`, then upload with

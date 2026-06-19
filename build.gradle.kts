@@ -31,14 +31,18 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-// Apply a specific Java toolchain to ease working on different environments.
-// Override with -PjavaVersion=24 to test against newer JDKs (CI matrices this).
+// Compile against a fixed Java 21 toolchain: this is the bytecode we ship.
 java {
-    val javaVersion = (findProperty("javaVersion") as String? ?: "21").toInt()
-    toolchain { languageVersion = JavaLanguageVersion.of(javaVersion) }
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
 }
 
-tasks.named<Test>("test") { useJUnitPlatform() }
+tasks.named<Test>("test") {
+    useJUnitPlatform()
+    // Run the 21-built artifact on a configurable JVM to prove backward
+    // compatibility. Override with -PtestJavaVersion=25 (CI matrices this).
+    val testJavaVersion = (findProperty("testJavaVersion") as String? ?: "21").toInt()
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(testJavaVersion) }
+}
 
 // -- Examples ----------------------------------------------------------------
 // The runnable example programs (the Java analogue of resonate-sdk-py/examples) live in their own
