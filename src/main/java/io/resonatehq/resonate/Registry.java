@@ -35,13 +35,17 @@ public final class Registry {
     // keeps the last one.
     private final Map<Method, NameVersion> byFn = new HashMap<>();
 
+    // Raw-Method registration is internal plumbing: the ref-based overloads below resolve a method
+    // reference ({@code Owner::fn}) to its Method and funnel through here. Package-private so the
+    // public SDK surface is uniformly ref-based, never a raw Method.
+
     /** {@link #register(String, Method, int, RetryPolicy)} with {@code version=1}, no policy. */
-    public void register(String name, Method fn) {
+    void register(String name, Method fn) {
         register(name, fn, 1, null);
     }
 
     /** {@link #register(String, Method, int, RetryPolicy)} with no policy override. */
-    public void register(String name, Method fn, int version) {
+    void register(String name, Method fn, int version) {
         register(name, fn, version, null);
     }
 
@@ -52,7 +56,7 @@ public final class Registry {
      * (leaf) function running as a root task. {@code null} (the default) means no override -- the
      * SDK-wide default applies. A workflow body never retries regardless of the policy.
      */
-    public void register(String name, Method fn, int version, RetryPolicy retryPolicy) {
+    void register(String name, Method fn, int version, RetryPolicy retryPolicy) {
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("name is required");
         }
@@ -66,6 +70,60 @@ public final class Registry {
         byKey.put(key, new Durable(fn));
         policyByKey.put(key, retryPolicy);
         byFn.put(fn, new NameVersion(name, version));
+    }
+
+    // -- ref-based registration --------------------------------------------------
+    // Mirrors the Python SDK passing the function object itself: a durable function is registered
+    // by method reference ({@code Owner::fn}), never a raw Method. The {@code F0..F5} overloads
+    // select by arity; each resolves the reference to its Method and stores it like the Method form.
+    // {@code version} defaults to 1.
+
+    public <R> void register(String name, Fn.F0<R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <R> void register(String name, Fn.F0<R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, R> void register(String name, Fn.F1<A, R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <A, R> void register(String name, Fn.F1<A, R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, R> void register(String name, Fn.F2<A, B, R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <A, B, R> void register(String name, Fn.F2<A, B, R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, C, R> void register(String name, Fn.F3<A, B, C, R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <A, B, C, R> void register(String name, Fn.F3<A, B, C, R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, C, D, R> void register(String name, Fn.F4<A, B, C, D, R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <A, B, C, D, R> void register(String name, Fn.F4<A, B, C, D, R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
+    }
+
+    public <A, B, C, D, E, R> void register(String name, Fn.F5<A, B, C, D, E, R> ref) {
+        register(name, Fn.methodOf(ref), 1, null);
+    }
+
+    public <A, B, C, D, E, R> void register(String name, Fn.F5<A, B, C, D, E, R> ref, int version) {
+        register(name, Fn.methodOf(ref), version, null);
     }
 
     /** {@link #get(String, int)} with {@code version=1}. */
@@ -84,7 +142,7 @@ public final class Registry {
      * <p>The inverse of {@link #get}: a caller holding the function object rather than its name uses
      * this to recover what to dispatch by. {@code null} means the object was never registered.
      */
-    public NameVersion reverse(Method fn) {
+    NameVersion reverse(Method fn) {
         return byFn.get(fn);
     }
 

@@ -83,6 +83,11 @@ public final class Heartbeat {
             this.sender = sender;
         }
 
+        /** The configured beat interval in milliseconds. Mirrors Python's reachable {@code interval_ms}. */
+        public long intervalMs() {
+            return intervalMs;
+        }
+
         @Override
         public synchronized void start(String taskId, int taskVersion) {
             activeTasks.put(taskId, taskVersion);

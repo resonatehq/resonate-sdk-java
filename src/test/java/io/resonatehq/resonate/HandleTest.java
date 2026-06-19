@@ -36,11 +36,9 @@ final class HandleTest {
         return CompletableFuture.completedFuture(null);
     }
 
-    /** Unwraps the CompletionException that {@code join} wraps thenApply failures in. */
+    /** The throwable {@code result()} raises directly (durable rejections surface unwrapped). */
     private static Throwable cause(ResonateHandle<?> handle) {
-        CompletionException ex =
-                assertThrows(CompletionException.class, () -> handle.result().join());
-        return ex.getCause();
+        return assertThrows(Throwable.class, handle::result);
     }
 
     @Test
@@ -48,7 +46,7 @@ final class HandleTest {
         Codec c = codec();
         PromiseResult result = new PromiseResult("resolved", c.encode(42));
         ResonateHandle<Integer> handle = new ResonateHandle<>("p1", ready(result), c, Integer.class, created());
-        assertEquals(42, handle.result().join());
+        assertEquals(42, handle.result());
     }
 
     @Test
@@ -91,14 +89,14 @@ final class HandleTest {
     void resultEmptyDataDecodesToNull() {
         PromiseResult result = new PromiseResult("resolved", new Value(null, ""));
         ResonateHandle<Object> handle = new ResonateHandle<>("p1", ready(result), codec(), Object.class, created());
-        assertEquals(null, handle.result().join());
+        assertEquals(null, handle.result());
     }
 
     @Test
     void resultAbsentDataDecodesToNull() {
         PromiseResult result = new PromiseResult("resolved", new Value());
         ResonateHandle<Object> handle = new ResonateHandle<>("p1", ready(result), codec(), Object.class, created());
-        assertEquals(null, handle.result().join());
+        assertEquals(null, handle.result());
     }
 
     @Test
@@ -106,7 +104,7 @@ final class HandleTest {
         Codec c = codec();
         PromiseResult result = new PromiseResult("resolved", c.encode(Map.of("x", 1)));
         ResonateHandle<Object> handle = new ResonateHandle<>("p1", ready(result), c, Object.class, created());
-        assertEquals(Map.of("x", 1), handle.result().join());
+        assertEquals(Map.of("x", 1), handle.result());
     }
 
     @Test
@@ -114,7 +112,7 @@ final class HandleTest {
         Codec c = codec();
         PromiseResult result = new PromiseResult("resolved", c.encode(7));
         ResonateHandle<Integer> handle = new ResonateHandle<>("p1", ready(result), c, Integer.class, created());
-        assertEquals(7, handle.result().join());
+        assertEquals(7, handle.result());
     }
 
     @Test

@@ -371,11 +371,36 @@ public final class Context {
         return runWith(resolved, link, args);
     }
 
-    /** Run a function object as a local child. */
-    public ResonateFuture run(Method fn, Object... args) {
+    /** Internal: run the method behind a resolved reference as a local child. */
+    private ResonateFuture run(Method fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         return runWith(new Durable(fn), link, args);
+    }
+
+    /** Run a function passed as a method reference ({@code Owner::fn}) as a local child. */
+    public <R> ResonateFuture run(Fn.F0<R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
+    }
+
+    public <A, R> ResonateFuture run(Fn.F1<A, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, R> ResonateFuture run(Fn.F2<A, B, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, R> ResonateFuture run(Fn.F3<A, B, C, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, D, R> ResonateFuture run(Fn.F4<A, B, C, D, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, D, E, R> ResonateFuture run(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
+        return run(Fn.methodOf(ref), args);
     }
 
     private ResonateFuture runWith(Durable df, Chain.Link link, Object[] args) {
@@ -492,11 +517,11 @@ public final class Context {
     }
 
     /**
-     * Dispatch a function object over the wire by the name it was registered under (reverse lookup),
-     * carrying its own registered version and threading its {@link Durable} so the settled result is
-     * coerced to the declared return type.
+     * Internal: dispatch the method behind a resolved reference over the wire by the name it was
+     * registered under (reverse lookup), carrying its own registered version and threading its {@link
+     * Durable} so the settled result is coerced to the declared return type.
      */
-    public ResonateFuture rpc(Method fn, Object... args) {
+    private ResonateFuture rpc(Method fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
         NameVersion recorded = state.registry.reverse(fn);
@@ -508,6 +533,31 @@ public final class Context {
         TaskData data = new TaskData(Arrays.asList(args), Map.of(), recorded.name(), recorded.version());
         PromiseCreateReq req = globalReq(nextId(), opts.timeout(), data, resolveTarget(opts.target()), false, null);
         return remoteFuture(req, link, df);
+    }
+
+    /** Dispatch a function passed as a method reference ({@code Owner::fn}) over the wire. */
+    public <R> ResonateFuture rpc(Fn.F0<R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
+    }
+
+    public <A, R> ResonateFuture rpc(Fn.F1<A, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, R> ResonateFuture rpc(Fn.F2<A, B, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, R> ResonateFuture rpc(Fn.F3<A, B, C, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, D, R> ResonateFuture rpc(Fn.F4<A, B, C, D, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
+    }
+
+    public <A, B, C, D, E, R> ResonateFuture rpc(Fn.F5<A, B, C, D, E, R> ref, Object... args) {
+        return rpc(Fn.methodOf(ref), args);
     }
 
     /** Create a timer promise that resolves after {@code duration}. */

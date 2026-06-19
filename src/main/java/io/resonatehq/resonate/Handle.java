@@ -59,16 +59,28 @@ public final class Handle {
         private final String id;
         private final Subscription sub;
         private final Codec codec;
-        private final Class<T> type;
+        private final java.lang.reflect.Type type;
         private final CompletableFuture<Void> created;
 
         public ResonateHandle(
-                String id, Subscription sub, Codec codec, Class<T> type, CompletableFuture<Void> created) {
+                String id,
+                Subscription sub,
+                Codec codec,
+                java.lang.reflect.Type type,
+                CompletableFuture<Void> created) {
             this.id = id;
             this.sub = sub;
             this.codec = codec;
             this.type = type;
             this.created = created;
+        }
+
+        /**
+         * The decode type this handle coerces a resolved value to. Package-private: exposed for the
+         * behaviour tests, mirroring Python's directly-reachable {@code handle._type}.
+         */
+        java.lang.reflect.Type type() {
+            return type;
         }
 
         /**
@@ -81,9 +93,24 @@ public final class Handle {
             return created.thenApply(v -> id);
         }
 
-        /** Block until the promise completes, returning the result or raising. */
-        public CompletableFuture<T> result() {
-            return sub.await().thenApply(this::decodeResult);
+        /**
+         * Block until the promise completes, returning the result or raising, the blocking analogue
+         * of Python's {@code await handle.result()}. A durable rejection is unwrapped from its {@link
+         * CompletionException} wrapper so it surfaces as the original throwable.
+         */
+        public T result() {
+            try {
+                return sub.await().thenApply(this::decodeResult).join();
+            } catch (CompletionException exc) {
+                Throwable cause = exc.getCause() != null ? exc.getCause() : exc;
+                if (cause instanceof RuntimeException re) {
+                    throw re;
+                }
+                if (cause instanceof Error err) {
+                    throw err;
+                }
+                throw exc;
+            }
         }
 
         /** Check if the promise is done (non-blocking). */
@@ -91,9 +118,13 @@ public final class Handle {
             return sub.settled();
         }
 
+        @SuppressWarnings("unchecked")
         private T decodeResult(PromiseResult result) {
             return switch (result.state()) {
-                case "resolved" -> codec.convert(codec.decode(result.value()), type);
+                    // ``type`` is recovered at runtime (Durable.returnType / Object for the untyped
+                    // paths), so the coercion is dynamic and the cast to T is unchecked -- exactly the
+                    // gap Python closes by passing ``type_`` explicitly.
+                case "resolved" -> (T) codec.convert(codec.decode(result.value()), type);
                     // Python does a bare ``raise`` of the recovered error. CompletableFuture funnels
                     // every failure through CompletionException, so wrapping here lands the original
                     // throwable on getCause() exactly as an unwrapped throw would.

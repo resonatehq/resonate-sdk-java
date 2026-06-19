@@ -56,8 +56,12 @@ public final class Durable {
     private final Class<?> varargComponent; // element type of that varargs, else null
     private final Type returnType;
 
+    // Construction is from a raw Method: internal plumbing the ref-based entrypoints
+    // ({@code Resonate}/{@code Context} run/rpc/register) resolve into. Package-private so the
+    // public SDK surface is uniformly ref-based, never a raw Method.
+
     /** Build from a static (or already-target-bound) {@link Method}. */
-    public Durable(Method fn) {
+    Durable(Method fn) {
         this(null, fn);
     }
 
@@ -67,7 +71,7 @@ public final class Durable {
      * self} is already supplied, so the function's first user-visible parameter is still {@code
      * ctx}.
      */
-    public Durable(Object target, Method fn) {
+    Durable(Object target, Method fn) {
         if (fn == null) {
             throw new ApplicationError("expected a callable, got null");
         }

@@ -171,8 +171,8 @@ class ContextTest {
     }
 
     static int parentWorkflow(Context ctx, int x) {
-        int a = (int) ctx.run(DOUBLE, x).await();
-        int b = (int) ctx.run(DOUBLE, a).await();
+        int a = (int) ctx.run(ContextTest::doubleFn, x).await();
+        int b = (int) ctx.run(ContextTest::doubleFn, a).await();
         return a + b;
     }
 
@@ -192,16 +192,16 @@ class ContextTest {
     }
 
     static int deepMiddle(Context ctx) {
-        return (int) ctx.run(DEEP_INNER).await();
+        return (int) ctx.run(ContextTest::deepInner).await();
     }
 
     static int deepTop(Context ctx) {
-        return (int) ctx.run(DEEP_MIDDLE).await();
+        return (int) ctx.run(ContextTest::deepMiddle).await();
     }
 
     static int completesThenSuspends(Context ctx) {
-        int a = (int) ctx.run(DOUBLE, 21).await();
-        int b = (int) ctx.run(BLOCKS_ON_REMOTE).await();
+        int a = (int) ctx.run(ContextTest::doubleFn, 21).await();
+        int b = (int) ctx.run(ContextTest::blocksOnRemote).await();
         return a + b;
     }
 
@@ -213,7 +213,7 @@ class ContextTest {
     }
 
     static int parentWithFireAndForget(Context ctx) {
-        ctx.run(BLOCKS_ON_REMOTE);
+        ctx.run(ContextTest::blocksOnRemote);
         return 99;
     }
 
@@ -222,7 +222,7 @@ class ContextTest {
     }
 
     static int parentDoesNotAwaitChild(Context ctx) {
-        ctx.run(QUIET_CHILD);
+        ctx.run(ContextTest::quietChild);
         return 1;
     }
 
@@ -238,27 +238,6 @@ class ContextTest {
             throw new RuntimeException(e);
         }
     }
-
-    static final Method DOUBLE = m("doubleFn", Context.class, int.class);
-    static final Method BEAT = m("beat", Context.class);
-    static final Method SUM_POINT = m("sumPoint", Context.class, Point.class);
-    static final Method FAILING = m("failing", Context.class);
-    static final Method FAILING_PLAIN = m("failingPlain", Context.class);
-    static final Method USE_RESOURCE = m("useResource", Context.class, Resource.class);
-    static final Method MAKE_FLOAT = m("makeFloat", Context.class, int.class);
-    static final Method MAKE_POINT = m("makePoint", Context.class, int.class, int.class);
-    static final Method PARENT_WORKFLOW = m("parentWorkflow", Context.class, int.class);
-    static final Method BLOCKS_ON_REMOTE = m("blocksOnRemote", Context.class);
-    static final Method FIRE_AND_FORGET = m("fireAndForget", Context.class);
-    static final Method DEEP_INNER = m("deepInner", Context.class);
-    static final Method DEEP_MIDDLE = m("deepMiddle", Context.class);
-    static final Method DEEP_TOP = m("deepTop", Context.class);
-    static final Method COMPLETES_THEN_SUSPENDS = m("completesThenSuspends", Context.class);
-    static final Method MULTI_REMOTE = m("multiRemote", Context.class);
-    static final Method PARENT_WITH_FF = m("parentWithFireAndForget", Context.class);
-    static final Method QUIET_CHILD = m("quietChild", Context.class);
-    static final Method PARENT_NO_AWAIT = m("parentDoesNotAwaitChild", Context.class);
-    static final Method DISPATCHES_DETACHED = m("dispatchesDetached", Context.class);
 
     // =========================================================================
     // Context plumbing
@@ -324,7 +303,7 @@ class ContextTest {
     @Test
     void runLeafReturnsAndSettlesResolved() {
         Context ctx = root();
-        assertEquals(42, ctx.run(DOUBLE, 21).await());
+        assertEquals(42, ctx.run(ContextTest::doubleFn, 21).await());
         PromiseRecord record = ctx.effects().cache().get("root.1");
         assertEquals("resolved", record.state());
         assertEquals(42, record.value().data());
@@ -333,21 +312,21 @@ class ContextTest {
     @Test
     void runCtxOnlyFunction() {
         Context ctx = root();
-        assertEquals("ok", ctx.run(BEAT).await());
+        assertEquals("ok", ctx.run(ContextTest::beat).await());
         assertEquals("resolved", ctx.effects().cache().get("root.1").state());
     }
 
     @Test
     void runPassesLiveStructArg() {
         Context ctx = root();
-        assertEquals(7, ctx.run(SUM_POINT, new Point(3, 4)).await());
+        assertEquals(7, ctx.run(ContextTest::sumPoint, new Point(3, 4)).await());
     }
 
     @Test
     void runSequentialChildIds() {
         Context ctx = root();
-        assertEquals(4, ctx.run(DOUBLE, 2).await());
-        assertEquals(6, ctx.run(DOUBLE, 3).await());
+        assertEquals(4, ctx.run(ContextTest::doubleFn, 2).await());
+        assertEquals(6, ctx.run(ContextTest::doubleFn, 3).await());
         assertEquals(4, ctx.effects().cache().get("root.1").value().data());
         assertEquals(6, ctx.effects().cache().get("root.2").value().data());
     }
@@ -359,13 +338,13 @@ class ContextTest {
     @Test
     void runAcceptsNonSerializableArg() {
         Context ctx = root();
-        assertEquals("db", ctx.run(USE_RESOURCE, new Resource("db")).await());
+        assertEquals("db", ctx.run(ContextTest::useResource, new Resource("db")).await());
     }
 
     @Test
     void runLocalChildParamIsEmpty() {
         Context ctx = root();
-        ctx.run(DOUBLE, 21).await();
+        ctx.run(ContextTest::doubleFn, 21).await();
         assertEquals(new Value(), ctx.effects().cache().get("root.1").param());
     }
 
@@ -384,8 +363,8 @@ class ContextTest {
     @Test
     void runFunctionErrorPropagatesAndSettlesRejected() {
         Context ctx = root();
-        ApplicationError exc =
-                assertThrows(ApplicationError.class, () -> ctx.run(FAILING).await());
+        ApplicationError exc = assertThrows(
+                ApplicationError.class, () -> ctx.run(ContextTest::failing).await());
         assertEquals("denied", exc.getMessage());
         assertEquals("rejected", ctx.effects().cache().get("root.1").state());
     }
@@ -393,8 +372,8 @@ class ContextTest {
     @Test
     void runPlainExceptionPreservesTypeAndSettlesRejected() {
         Context ctx = root();
-        BookingError exc =
-                assertThrows(BookingError.class, () -> ctx.run(FAILING_PLAIN).await());
+        BookingError exc = assertThrows(
+                BookingError.class, () -> ctx.run(ContextTest::failingPlain).await());
         assertEquals("card declined", exc.getMessage());
         assertEquals("rejected", ctx.effects().cache().get("root.1").state());
     }
@@ -406,21 +385,21 @@ class ContextTest {
     @Test
     void runPresettledResolvedSkipsExecution() {
         Context ctx = root(List.of(resolved("root.1", 99)));
-        assertEquals(99, ctx.run(DOUBLE, 1).await());
+        assertEquals(99, ctx.run(ContextTest::doubleFn, 1).await());
     }
 
     @Test
     void runPresettledRejectedRaisesWithoutExecution() {
         Context ctx = root(List.of(rejected("root.1", "stored failure")));
-        ApplicationError exc =
-                assertThrows(ApplicationError.class, () -> ctx.run(DOUBLE, 1).await());
+        ApplicationError exc = assertThrows(
+                ApplicationError.class, () -> ctx.run(ContextTest::doubleFn, 1).await());
         assertEquals("stored failure", exc.getMessage());
     }
 
     @Test
     void runRecoveryCoercesReturnToStruct() {
         Context ctx = root(List.of(resolved("root.1", new Point(3, 4))));
-        Object result = ctx.run(MAKE_POINT, 3, 4).await();
+        Object result = ctx.run(ContextTest::makePoint, 3, 4).await();
         assertEquals(new Point(3, 4), result);
         assertInstanceOf(Point.class, result);
     }
@@ -432,7 +411,7 @@ class ContextTest {
     @Test
     void runLivePathCoercesReturnToDeclaredType() {
         Context ctx = root();
-        Object result = ctx.run(MAKE_FLOAT, 3).await();
+        Object result = ctx.run(ContextTest::makeFloat, 3).await();
         assertEquals(3.0, result);
         assertInstanceOf(Double.class, result);
     }
@@ -440,7 +419,7 @@ class ContextTest {
     @Test
     void runLivePathCoercesReturnToStruct() {
         Context ctx = root();
-        Object result = ctx.run(MAKE_POINT, 3, 4).await();
+        Object result = ctx.run(ContextTest::makePoint, 3, 4).await();
         assertEquals(new Point(3, 4), result);
         assertInstanceOf(Point.class, result);
     }
@@ -452,7 +431,7 @@ class ContextTest {
     @Test
     void workflowRunsNestedLeaves() {
         Context ctx = root();
-        assertEquals(30, ctx.run(PARENT_WORKFLOW, 5).await());
+        assertEquals(30, ctx.run(ContextTest::parentWorkflow, 5).await());
         assertEquals(List.of(), ctx.spawnedRemote());
         assertEquals("resolved", ctx.effects().cache().get("root.1").state());
         assertEquals(10, ctx.effects().cache().get("root.1.1").value().data());
@@ -462,7 +441,7 @@ class ContextTest {
     @Test
     void runSuspendsWhenChildBlocksOnRemote() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(BLOCKS_ON_REMOTE).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::blocksOnRemote).await());
         assertEquals(List.of("remote-dep"), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get("root.1").state());
     }
@@ -470,7 +449,7 @@ class ContextTest {
     @Test
     void runSuspendsWhenChildCompletesWithPendingRemote() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(FIRE_AND_FORGET).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::fireAndForget).await());
         assertEquals(List.of("ff-dep"), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get("root.1").state());
     }
@@ -478,7 +457,7 @@ class ContextTest {
     @Test
     void runSuspensionPropagatesThroughIntermediateWorkflow() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(DEEP_MIDDLE).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::deepMiddle).await());
         assertEquals(List.of("deep-dep"), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get("root.1").state());
         assertEquals("pending", ctx.effects().cache().get("root.1.1").state());
@@ -487,7 +466,7 @@ class ContextTest {
     @Test
     void runSuspensionPropagatesThroughThreeLevels() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(DEEP_TOP).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::deepTop).await());
         assertEquals(List.of("deep-dep"), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get("root.1").state());
         assertEquals("pending", ctx.effects().cache().get("root.1.1").state());
@@ -497,7 +476,8 @@ class ContextTest {
     @Test
     void runCompletedSiblingSettlesButParentStillSuspends() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(COMPLETES_THEN_SUSPENDS).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::completesThenSuspends)
+                .await());
         assertEquals(List.of("remote-dep"), ctx.spawnedRemote());
         assertEquals("resolved", ctx.effects().cache().get("root.1.1").state());
         assertEquals(42, ctx.effects().cache().get("root.1.1").value().data());
@@ -508,14 +488,15 @@ class ContextTest {
     @Test
     void runMergesMultipleTodosFromSingleChild() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(MULTI_REMOTE).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::multiRemote).await());
         assertEquals(List.of("dep-a", "dep-b", "dep-c"), ctx.spawnedRemote());
     }
 
     @Test
     void runFireAndForgetChildSuspensionPropagates() {
         Context ctx = root();
-        assertThrows(Suspended.class, () -> ctx.run(PARENT_WITH_FF).await());
+        assertThrows(Suspended.class, () -> ctx.run(ContextTest::parentWithFireAndForget)
+                .await());
         assertEquals(List.of("remote-dep"), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get("root.1").state());
         assertEquals("pending", ctx.effects().cache().get("root.1.1").state());
@@ -527,7 +508,7 @@ class ContextTest {
         // terminal state with the child's value observed. (The strict settle-ordering assertion in the
         // Python test relies on patching ``settle_promise``; here the join ordering is structural.)
         Context ctx = root();
-        assertEquals(1, ctx.run(PARENT_NO_AWAIT).await());
+        assertEquals(1, ctx.run(ContextTest::parentDoesNotAwaitChild).await());
         assertEquals("resolved", ctx.effects().cache().get("root.1.1").state());
         assertEquals(42, ctx.effects().cache().get("root.1.1").value().data());
         assertEquals("resolved", ctx.effects().cache().get("root.1").state());
@@ -545,7 +526,7 @@ class ContextTest {
         assertEquals(
                 10,
                 ctx.options(new Opts().withTimeout(Duration.ofSeconds(30)))
-                        .run(DOUBLE, 5)
+                        .run(ContextTest::doubleFn, 5)
                         .await());
         long after = Send.nowMs();
         long timeoutAt = ctx.effects().cache().get("root.1").timeoutAt();
@@ -556,7 +537,9 @@ class ContextTest {
     void runWithOptionsTimeoutCappedToParent() {
         long cap = Send.nowMs() + 5_000;
         Context ctx = rootTimeout(cap);
-        ctx.options(new Opts().withTimeout(Duration.ofDays(365))).run(DOUBLE, 1).await();
+        ctx.options(new Opts().withTimeout(Duration.ofDays(365)))
+                .run(ContextTest::doubleFn, 1)
+                .await();
         assertEquals(cap, ctx.effects().cache().get("root.1").timeoutAt());
     }
 
@@ -564,10 +547,10 @@ class ContextTest {
     void runOptionsDoNotLeakToBaseContext() {
         Context ctx = root();
         ctx.options(new Opts().withTimeout(Duration.ofSeconds(30)))
-                .run(DOUBLE, 1)
+                .run(ContextTest::doubleFn, 1)
                 .await();
         long shortDeadline = ctx.effects().cache().get("root.1").timeoutAt();
-        ctx.run(DOUBLE, 1).await();
+        ctx.run(ContextTest::doubleFn, 1).await();
         assertTrue(ctx.effects().cache().get("root.2").timeoutAt() > shortDeadline);
         assertEquals(new Opts(), ctx.opts());
     }
@@ -656,7 +639,7 @@ class ContextTest {
     @Test
     void futureIdReturnsIdAfterCreate() {
         Context ctx = root();
-        ResonateFuture fut = ctx.run(DOUBLE, 21);
+        ResonateFuture fut = ctx.run(ContextTest::doubleFn, 21);
         assertEquals("root.1", fut.id());
         assertEquals(42, fut.await());
     }
@@ -1034,7 +1017,7 @@ class ContextTest {
     @Test
     void detachedDoesNotForceParentToSuspend() {
         Context ctx = root();
-        assertEquals("done", ctx.run(DISPATCHES_DETACHED).await());
+        assertEquals("done", ctx.run(ContextTest::dispatchesDetached).await());
         assertEquals(List.of(), ctx.spawnedRemote());
         assertEquals("resolved", ctx.effects().cache().get("root.1").state());
         assertEquals("done", ctx.effects().cache().get("root.1").value().data());
@@ -1131,7 +1114,8 @@ class ContextTest {
     void ctxRunChildInheritsContextDefaultRetryPolicy() {
         Counter.calls = 0;
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), new Constant(2, 0), null);
-        assertThrows(ApplicationError.class, () -> ctx.run(LEAF_FLAKY_APP).await());
+        assertThrows(
+                ApplicationError.class, () -> ctx.run(ContextTest::leafFlakyApp).await());
         assertEquals(3, Counter.calls);
     }
 
@@ -1140,7 +1124,7 @@ class ContextTest {
         Counter.calls = 0;
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), new Constant(9, 0), null);
         assertThrows(ApplicationError.class, () -> ctx.options(new Opts().withRetryPolicy(new Never()))
-                .run(LEAF_FLAKY_APP)
+                .run(ContextTest::leafFlakyApp)
                 .await());
         assertEquals(1, Counter.calls);
     }
@@ -1184,8 +1168,6 @@ class ContextTest {
         throw new ApplicationError("boom");
     }
 
-    static final Method LEAF_FLAKY_APP = m("leafFlakyApp", Context.class);
-
     // =========================================================================
     // run: by-name dispatch
     // =========================================================================
@@ -1193,7 +1175,7 @@ class ContextTest {
     @Test
     void runByNameResolvesAndExecutesFromRegistry() {
         Registry registry = new Registry();
-        registry.register("double", DOUBLE);
+        registry.register("double", ContextTest::doubleFn);
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), null, registry);
         assertEquals(42, ctx.run("double", 21).await());
     }
@@ -1201,8 +1183,8 @@ class ContextTest {
     @Test
     void runByNameDispatchesOptsVersion() {
         Registry registry = new Registry();
-        registry.register("impl", V1, 1);
-        registry.register("impl", V2, 2);
+        registry.register("impl", ContextTest::v1, 1);
+        registry.register("impl", ContextTest::v2, 2);
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), null, registry);
         assertEquals("one", ctx.run("impl").await());
         assertEquals("two", ctx.options(new Opts().withVersion(2)).run("impl").await());
@@ -1223,9 +1205,6 @@ class ContextTest {
         return "two";
     }
 
-    static final Method V1 = m("v1", Context.class);
-    static final Method V2 = m("v2", Context.class);
-
     // =========================================================================
     // rpc: by-object dispatch
     // =========================================================================
@@ -1233,9 +1212,9 @@ class ContextTest {
     @Test
     void rpcByObjectDispatchesRegisteredNameAndVersion() {
         Registry registry = new Registry();
-        registry.register("remote_impl", DOUBLE, 3);
+        registry.register("remote_impl", ContextTest::doubleFn, 3);
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), null, registry);
-        assertThrows(Suspended.class, () -> ctx.rpc(DOUBLE, 5).await());
+        assertThrows(Suspended.class, () -> ctx.rpc(ContextTest::doubleFn, 5).await());
         assertEquals(
                 new TaskData(List.of(5), Map.of(), "remote_impl", 3),
                 taskData(ctx.effects().cache().get("root.1").param().data()));
@@ -1244,11 +1223,11 @@ class ContextTest {
     @Test
     void rpcByObjectVersionFromIdentityNotOpts() {
         Registry registry = new Registry();
-        registry.register("remote_impl", DOUBLE, 2);
+        registry.register("remote_impl", ContextTest::doubleFn, 2);
         Context ctx = root(List.of(), I64_MAX, new Dependencies(), null, registry);
-        assertThrows(
-                Suspended.class,
-                () -> ctx.options(new Opts().withVersion(9)).rpc(DOUBLE, 5).await());
+        assertThrows(Suspended.class, () -> ctx.options(new Opts().withVersion(9))
+                .rpc(ContextTest::doubleFn, 5)
+                .await());
         assertEquals(
                 2, taskData(ctx.effects().cache().get("root.1").param().data()).version());
     }
@@ -1256,7 +1235,7 @@ class ContextTest {
     @Test
     void rpcByObjectUnregisteredRaises() {
         Context ctx = root();
-        PlatformError exc = assertThrows(PlatformError.class, () -> ctx.rpc(BEAT));
+        PlatformError exc = assertThrows(PlatformError.class, () -> ctx.rpc(ContextTest::beat));
         assertInstanceOf(FunctionNotFoundError.class, exc.causes().get(0));
         assertEquals(List.of(), ctx.spawnedRemote());
     }
@@ -1264,9 +1243,9 @@ class ContextTest {
     @Test
     void rpcByObjectRecoveryCoercesReturnToStruct() {
         Registry registry = new Registry();
-        registry.register("make_point", MAKE_POINT, 1);
+        registry.register("make_point", ContextTest::makePoint, 1);
         Context ctx = root(List.of(resolved("root.1", new Point(3, 4))), I64_MAX, new Dependencies(), null, registry);
-        Object result = ctx.rpc(MAKE_POINT, 3, 4).await();
+        Object result = ctx.rpc(ContextTest::makePoint, 3, 4).await();
         assertInstanceOf(Point.class, result);
         assertEquals(new Point(3, 4), result);
     }
