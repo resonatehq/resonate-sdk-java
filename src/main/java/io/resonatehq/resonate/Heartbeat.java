@@ -124,6 +124,16 @@ public final class Heartbeat {
         private void cancelLoop() {
             if (executor != null) {
                 executor.shutdownNow();
+                // Wait for an in-flight tick to finish before returning so that, once stop/shutdown
+                // returns, no further heartbeat can be sent. tick() never acquires this monitor, so
+                // awaiting here cannot deadlock.
+                try {
+                    if (!executor.awaitTermination(intervalMs * 2 + 1000, TimeUnit.MILLISECONDS)) {
+                        LOGGER.log(Level.WARNING, "heartbeat loop did not terminate in time");
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
                 executor = null;
             }
         }
