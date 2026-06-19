@@ -1532,6 +1532,10 @@ public interface Network {
         @Override
         public void close() {
             closed = true;
+            // shutdownNow cancels the in-flight SSE long-poll so the daemon poll thread unblocks and
+            // exits promptly; otherwise it survives into JVM shutdown and dies with a
+            // NoClassDefFoundError trying to load a not-yet-loaded class (e.g. SseResponse).
+            client.shutdownNow();
         }
 
         @Override

@@ -1,1 +1,0 @@
-{"type":"config","name":"Mirror missing Python tests (platform_errors, invariants, error_handling) into Java","metricName":"tests_passing","metricUnit":"","bestDirection":"higher"}

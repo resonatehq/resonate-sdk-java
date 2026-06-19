@@ -553,4 +553,32 @@ class NetworkTest {
         assertTrue(body.contains("\"status\":404"));
         assertEquals(1, notFound.attempts); // one shot — no retry on a real HTTP response
     }
+
+    @Test
+    void closeUnblocksInflightGet() throws Exception {
+        // A server that accepts the connection but never replies, modelling the SSE long-poll.
+        try (java.net.ServerSocket server = new java.net.ServerSocket(0)) {
+            new Thread(() -> {
+                        try {
+                            server.accept(); // hold the connection open, send nothing
+                        } catch (Exception ignored) {
+                        }
+                    })
+                    .start();
+
+            RealHttpSession session = new RealHttpSession(8);
+            String url = "http://localhost:" + server.getLocalPort() + "/poll";
+            CompletableFuture<Void> get =
+                    CompletableFuture.runAsync(() -> session.get(url, Map.of("Accept", "text/event-stream")));
+
+            // The get is now blocked waiting for a response that never comes.
+            Thread.sleep(200);
+            assertTrue(!get.isDone(), "get should still be blocked before close");
+
+            // close() must cancel the in-flight request so the daemon poll thread exits, rather than
+            // surviving into JVM shutdown and dying with NoClassDefFoundError(SseResponse).
+            session.close();
+            assertThrows(ExecutionException.class, () -> get.get(2, TimeUnit.SECONDS));
+        }
+    }
 }

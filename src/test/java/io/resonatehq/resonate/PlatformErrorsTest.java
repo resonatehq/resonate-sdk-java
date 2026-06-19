@@ -2,7 +2,6 @@ package io.resonatehq.resonate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -651,7 +650,8 @@ class PlatformErrorsTest {
         Resonate res = Resonate.builder().build();
         try {
             res.register((io.resonatehq.resonate.Fn.F1<Object, Integer>) PlatformErrorsTest::myfn, "myfn", 1);
-            var handle = res.run("pe-ser", (io.resonatehq.resonate.Fn.F1<Object, Integer>) PlatformErrorsTest::myfn, new Object());
+            var handle = res.run(
+                    "pe-ser", (io.resonatehq.resonate.Fn.F1<Object, Integer>) PlatformErrorsTest::myfn, new Object());
             assertThrows(SerializationError.class, () -> await(handle.id()));
         } finally {
             res.stop().join();

@@ -199,6 +199,90 @@ class CoreTest {
         return 0;
     }
 
+    // ── Error handling: a ctx.run child's rejection is recovered with its original type ──────
+    //
+    // The local-dispatch analogue of tests/test_error_handling.py: a step rejects its promise with
+    // the encoded error (message + best-effort __java_serialized), and the parent's ctx.run await
+    // recovers the original exception -- so the orchestrator can catch it by its concrete class.
+
+    /** A custom domain exception: module-scope and serializable, so it survives the boundary. */
+    @SuppressWarnings("serial")
+    static class PaymentDeclinedError extends RuntimeException {
+        PaymentDeclinedError(String message) {
+            super(message);
+        }
+    }
+
+    /** Subclass of a custom exception: its base relationship survives too. */
+    @SuppressWarnings("serial")
+    static class FraudSuspectedError extends PaymentDeclinedError {
+        FraudSuspectedError(String message) {
+            super(message);
+        }
+    }
+
+    static String stepRaisesDomainError(Context ctx) {
+        throw new PaymentDeclinedError("card declined for $42");
+    }
+
+    static String stepRaisesDomainSubclass(Context ctx) {
+        throw new FraudSuspectedError("suspected fraud on card 4242");
+    }
+
+    static String stepRaisesTaggedApplicationError(Context ctx) {
+        // The cross-SDK-safe discrimination idiom: a parseable prefix in the message text.
+        throw new ApplicationError("E_NOT_FOUND: user 42 does not exist");
+    }
+
+    static String stepRaisesPlain(Context ctx) {
+        throw new RuntimeException("bad input from step");
+    }
+
+    static int stepReturnsOk(Context ctx, int x) {
+        return x * 2;
+    }
+
+    /** Catches the reconstructed custom class directly; returns "class|message". */
+    static String orchestratorCatchesDomainClass(Context ctx) {
+        try {
+            ctx.run(CoreTest::stepRaisesDomainError).await();
+        } catch (PaymentDeclinedError exc) {
+            return exc.getClass().getSimpleName() + "|" + exc.getMessage();
+        }
+        throw new AssertionError("step unexpectedly succeeded");
+    }
+
+    /** ``except PaymentDeclined`` catches the reconstructed subclass too. */
+    static String orchestratorCatchesDomainSubclass(Context ctx) {
+        try {
+            ctx.run(CoreTest::stepRaisesDomainSubclass).await();
+        } catch (PaymentDeclinedError exc) {
+            return exc.getClass().getSimpleName();
+        }
+        return "not caught as PaymentDeclined";
+    }
+
+    /** The tagged-message pattern: parse the code prefix out of an ApplicationError. */
+    static String orchestratorParsesTaggedApplicationError(Context ctx) {
+        try {
+            ctx.run(CoreTest::stepRaisesTaggedApplicationError).await();
+        } catch (ApplicationError exc) {
+            return exc.getMessage().split(": ", 2)[0];
+        }
+        throw new AssertionError("step unexpectedly succeeded");
+    }
+
+    /** "By position" discrimination: one await per try block, so the block that raised names the step. */
+    static String orchestratorPositionalDiscrimination(Context ctx) {
+        ctx.run(CoreTest::stepReturnsOk, 1).await(); // step A: succeeds
+        try {
+            ctx.run(CoreTest::stepRaisesPlain).await(); // step B: fails
+        } catch (RuntimeException exc) {
+            return "step B failed";
+        }
+        return "no failure";
+    }
+
     // ── Fulfill (success / failure / object value) ──────────────────────────
 
     @Test
@@ -463,6 +547,80 @@ class CoreTest {
 
         String status = fix.core.executeUntilBlockedOuter("p1-swallow", rt.version(), rt.promise(), rt.preload());
         assertEquals("suspended", status);
+    }
+
+    // ── Error handling: ctx.run rejection recovery + discrimination ─────────
+
+    @Test
+    void ctxRunDomainExceptionPreservesType() {
+        CoreFixture fix = new CoreFixture();
+        fix.reg.register("orchDomain", CoreTest::orchestratorCatchesDomainClass);
+        RootTask rt = fix.createRootTask("p1-domain", "orchDomain");
+
+        String status = fix.core.executeUntilBlockedOuter("p1-domain", rt.version(), rt.promise(), rt.preload());
+        assertEquals("done", status);
+
+        PromiseRecord got = fix.promiseGet("p1-domain");
+        assertEquals("resolved", got.state());
+        // The custom PaymentDeclinedError raised by the step is reconstructed for the orchestrator.
+        assertEquals("PaymentDeclinedError|card declined for $42", got.value().data());
+    }
+
+    @Test
+    void ctxRunDomainSubclassCaughtAsBase() {
+        CoreFixture fix = new CoreFixture();
+        fix.reg.register("orchSubclass", CoreTest::orchestratorCatchesDomainSubclass);
+        RootTask rt = fix.createRootTask("p1-subclass", "orchSubclass");
+
+        fix.core.executeUntilBlockedOuter("p1-subclass", rt.version(), rt.promise(), rt.preload());
+
+        PromiseRecord got = fix.promiseGet("p1-subclass");
+        assertEquals("resolved", got.state());
+        // FraudSuspected is a PaymentDeclined; the whole class survives, so ``except base`` catches it.
+        assertEquals("FraudSuspectedError", got.value().data());
+    }
+
+    @Test
+    void ctxRunTaggedApplicationErrorParsed() {
+        CoreFixture fix = new CoreFixture();
+        fix.reg.register("orchTagged", CoreTest::orchestratorParsesTaggedApplicationError);
+        RootTask rt = fix.createRootTask("p1-tagged", "orchTagged");
+
+        fix.core.executeUntilBlockedOuter("p1-tagged", rt.version(), rt.promise(), rt.preload());
+
+        PromiseRecord got = fix.promiseGet("p1-tagged");
+        assertEquals("resolved", got.state());
+        assertEquals("E_NOT_FOUND", got.value().data());
+    }
+
+    @Test
+    void ctxRunPositionalDiscriminationIdentifiesFailingStep() {
+        CoreFixture fix = new CoreFixture();
+        fix.reg.register("orchPos", CoreTest::orchestratorPositionalDiscrimination);
+        RootTask rt = fix.createRootTask("p1-pos", "orchPos");
+
+        fix.core.executeUntilBlockedOuter("p1-pos", rt.version(), rt.promise(), rt.preload());
+
+        PromiseRecord got = fix.promiseGet("p1-pos");
+        assertEquals("resolved", got.state());
+        assertEquals("step B failed", got.value().data());
+    }
+
+    @Test
+    void rejectedPromiseRecoversApplicationErrorType() {
+        // Top-level boundary (handle.result analogue): an orchestrator that raises ApplicationError
+        // settles the root rejected, and the stored value decodes back to the original ApplicationError.
+        CoreFixture fix = new CoreFixture();
+        fix.reg.register("failRecover", CoreTest::wfFail);
+        RootTask rt = fix.createRootTask("p1-recover", "failRecover");
+
+        fix.core.executeUntilBlockedOuter("p1-recover", rt.version(), rt.promise(), rt.preload());
+
+        PromiseRecord got = fix.promiseGet("p1-recover");
+        assertEquals("rejected", got.state());
+        Throwable recovered = Codec.deserializeError(got.value().data());
+        assertInstanceOf(ApplicationError.class, recovered);
+        assertEquals("deliberate failure", recovered.getMessage());
     }
 
     @Test
