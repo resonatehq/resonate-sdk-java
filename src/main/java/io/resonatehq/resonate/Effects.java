@@ -61,6 +61,15 @@ public final class Effects {
      * <p>Each preloaded record is decoded into the cache; one that fails to decode (a {@link
      * ResonateError}) is silently skipped, mirroring Python.
      */
+    /**
+     * The decoded-record cache. Package-private: exposed for the behaviour tests, mirroring Python's
+     * directly-reachable {@code effects.cache}. The runtime reaches it only through {@link
+     * #createPromise} / {@link #settlePromise}.
+     */
+    Map<String, PromiseRecord> cache() {
+        return cache;
+    }
+
     public Effects(Sender sender, Codec codec, List<PromiseRecord> preload) {
         this.sender = sender;
         this.codec = codec;

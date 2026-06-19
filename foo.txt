@@ -1,0 +1,12 @@
+Translate @resonate-sdk-py/src/resonate/promises.py  to
+    @src/main/java/io/resonatehq/resonate/Promises.java
+
+    then ensure 1:1 behavior by checking the
+    @resonate-sdk-py/tests
+
+
+ Ensure we don't have race conditions and we are using correct
+ concurrency primitives in our java sdk
+
+ Also ensure behavior parity between sdks by checking the
+ tests against

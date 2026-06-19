@@ -1315,17 +1315,19 @@ public interface Network {
 
         private void tickOnce() {
             long now = Send.nowMs();
-            List<OutgoingMessage> outgoing;
             lock.lock();
             try {
                 state.outgoing.clear();
                 state.tick(now);
-                outgoing = state.outgoing;
+                List<OutgoingMessage> outgoing = state.outgoing;
                 state.outgoing = new ArrayList<>();
+                // Submit under the lock so dispatch order follows mutation order: send() and
+                // tickOnce() run on different threads, and a post-unlock submit could otherwise
+                // enqueue a later batch ahead of an earlier one.
+                dispatchMessages(outgoing);
             } finally {
                 lock.unlock();
             }
-            dispatchMessages(outgoing);
         }
 
         @Override
@@ -1359,7 +1361,6 @@ public interface Network {
 
             long now = Send.nowMs();
             Map<String, Object> flatResponse;
-            List<OutgoingMessage> outgoing;
             lock.lock();
             try {
                 try {
@@ -1367,8 +1368,11 @@ public interface Network {
                 } catch (RuntimeException exc) {
                     return CompletableFuture.failedFuture(exc);
                 }
-                outgoing = state.outgoing;
+                List<OutgoingMessage> outgoing = state.outgoing;
                 state.outgoing = new ArrayList<>();
+                // Submit under the lock so dispatch order follows mutation order across the
+                // concurrent send()/tickOnce() threads (see tickOnce).
+                dispatchMessages(outgoing);
             } finally {
                 lock.unlock();
             }
@@ -1380,8 +1384,6 @@ public interface Network {
             } catch (JsonProcessingException exc) {
                 return CompletableFuture.failedFuture(new DecodingError("invalid JSON response: " + exc.getMessage()));
             }
-
-            dispatchMessages(outgoing);
 
             return CompletableFuture.completedFuture(respStr);
         }
@@ -1401,17 +1403,18 @@ public interface Network {
             return "local://any@" + target;
         }
 
+        /**
+         * Hand a detached message batch to the dispatch thread. Must be called with {@code lock}
+         * held: the subscriber snapshot and the submit happen under the same lock that mutated the
+         * state, so dispatch order matches mutation order across the send/tick threads. The detached
+         * {@code messages} are owned by the dispatch thread from here on -- the state never touches
+         * them again -- so the actual serialization runs off the lock on {@code dispatchExecutor}.
+         */
         private void dispatchMessages(List<OutgoingMessage> messages) {
-            List<Consumer<String>> subs;
-            lock.lock();
-            try {
-                if (messages.isEmpty() || subscribers.isEmpty()) {
-                    return;
-                }
-                subs = new ArrayList<>(subscribers);
-            } finally {
-                lock.unlock();
+            if (messages.isEmpty() || subscribers.isEmpty()) {
+                return;
             }
+            List<Consumer<String>> subs = new ArrayList<>(subscribers);
             dispatchExecutor.execute(() -> {
                 for (OutgoingMessage msg : messages) {
                     String msgStr;
