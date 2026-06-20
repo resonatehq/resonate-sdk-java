@@ -1306,17 +1306,20 @@ public interface Network {
             // Runs once immediately, then roughly once per second thereafter (fixed delay). Dedicated
             // daemon platform thread: a single long-lived timer, so a virtual thread would only add
             // carrier-pool contention with no benefit.
-            tickThread = Thread.ofPlatform().name("resonate-local-tick").daemon().start(() -> {
-                while (!Thread.currentThread().isInterrupted()) {
-                    tickOnce();
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        return;
-                    }
-                }
-            });
+            tickThread = Thread.ofPlatform()
+                    .name("resonate-local-tick")
+                    .daemon()
+                    .start(() -> {
+                        while (!Thread.currentThread().isInterrupted()) {
+                            tickOnce();
+                            try {
+                                Thread.sleep(1000);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                                return;
+                            }
+                        }
+                    });
             return CompletableFuture.completedFuture(null);
         }
 
