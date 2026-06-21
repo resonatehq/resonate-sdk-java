@@ -1,6 +1,7 @@
 package io.resonatehq.resonate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -308,6 +309,68 @@ class NetworkTest {
                                         "data", Map.of("awaited", "child", "awaiter", "parent")))));
         JsonNode resp = send(net, suspendReq);
         assertEquals(300, status(resp));
+    }
+
+    @Test
+    void taskFenceRejectsWrongVersion() throws Exception {
+        // task.fence is gated on the task lease: a stale version is a 409 no-op, an unknown task is a
+        // 404, and only the matching version applies the wrapped promise.create. Mirrors Python's
+        // test_task_fence_rejects_wrong_version.
+        LocalNetwork net = new LocalNetwork("pid1", null);
+        // Create + acquire a task at version 0 (task.create acquires its task).
+        Map<String, Object> create = Map.of(
+                "kind", "task.create",
+                "head", Map.of("corrId", "c1", "version", "2025-01-15"),
+                "data",
+                        Map.of(
+                                "pid",
+                                "pid1",
+                                "ttl",
+                                60000,
+                                "action",
+                                Map.of(
+                                        "kind", "promise.create",
+                                        "head", Map.of("corrId", "c1a", "version", "2025-01-15"),
+                                        "data", Map.of("id", "root", "timeoutAt", I64_MAX, "tags", Map.of()))));
+        JsonNode createResp = send(net, create);
+        int version = data(createResp).get("task").get("version").asInt();
+        assertEquals(0, version);
+
+        // Wrong version -> 409, and the child promise is NOT created.
+        JsonNode bad = send(net, fence("root", version + 1, "child-bad"));
+        assertEquals(409, status(bad));
+        assertFalse(net.state.promises.containsKey("child-bad"));
+
+        // Unknown task -> 404.
+        JsonNode missing = send(net, fence("nope", 0, "child-x"));
+        assertEquals(404, status(missing));
+        assertFalse(net.state.promises.containsKey("child-x"));
+
+        // Correct version -> 200, child promise created and echoed under action.data.promise.
+        JsonNode ok = send(net, fence("root", version, "child-ok"));
+        assertEquals(200, status(ok));
+        assertEquals(
+                "child-ok",
+                data(ok).get("action").get("data").get("promise").get("id").asText());
+        assertTrue(net.state.promises.containsKey("child-ok"));
+    }
+
+    /** Build a {@code task.fence} request fencing a {@code promise.create} for {@code childId} on the given lease. */
+    private static Map<String, Object> fence(String taskId, int version, String childId) {
+        return Map.of(
+                "kind", "task.fence",
+                "head", Map.of("corrId", "f", "version", "2025-01-15"),
+                "data",
+                        Map.of(
+                                "id",
+                                taskId,
+                                "version",
+                                version,
+                                "action",
+                                Map.of(
+                                        "kind", "promise.create",
+                                        "head", Map.of("corrId", "fa", "version", "2025-01-15"),
+                                        "data", Map.of("id", childId, "timeoutAt", I64_MAX, "tags", Map.of()))));
     }
 
     private static Map<String, Object> taskCreate(String id, String target) {

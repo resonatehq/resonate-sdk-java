@@ -104,8 +104,15 @@ class PlatformErrorsTest {
         private static String kindOf(String req) {
             try {
                 JsonNode node = MAPPER.readTree(req);
-                JsonNode kind = node.get("kind");
-                return kind != null && kind.isTextual() ? kind.asText() : "";
+                String kind = node.path("kind").asText("");
+                // Promise mutations are fenced: a task.fence wraps the real promise.create /
+                // promise.settle in its action sub-envelope. Resolve to that inner kind so the
+                // create/settle arming still matches (and createAttempts still counts).
+                if ("task.fence".equals(kind)) {
+                    String sub = node.path("data").path("action").path("kind").asText("");
+                    return sub.isEmpty() ? kind : sub;
+                }
+                return kind;
             } catch (Exception e) {
                 return "";
             }
@@ -589,7 +596,9 @@ class PlatformErrorsTest {
         FailingNetwork net = new FailingNetwork(new LocalNetwork("chain-pid", null));
         net.failPromiseCreate = true;
         Sender sender = new Sender(new Transport(net), null);
-        Effects effects = new Effects(sender, new Codec(new NoopEncryptor()), List.of());
+        // Lease ("r"/0) is unused here: failPromiseCreate fails the fence before it reaches the
+        // wrapped LocalNetwork's lease check.
+        Effects effects = new Effects(sender, new Codec(new NoopEncryptor()), "r", 0, List.of());
         Context ctx = Context.root(
                 "r", "r", "r", FAR_FUTURE, "f", effects, Core.IDENTITY_TARGET_RESOLVER, new Dependencies(), null, null);
 

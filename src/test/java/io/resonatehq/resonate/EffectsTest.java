@@ -35,8 +35,9 @@ import org.junit.jupiter.api.Test;
  *
  * <p>The Python {@code StubNetwork} (an in-memory promise store mimicking the server, tracking a
  * send count) is reproduced here: it speaks the protocol-envelope wire format (echoing kind /
- * corrId) so the real {@link Sender} / {@link Transport} validation passes unchanged, and handles
- * only {@code promise.create} / {@code promise.settle}.
+ * corrId) so the real {@link Sender} / {@link Transport} validation passes unchanged. Since {@link
+ * Effects} fences every mutation, it handles {@code task.fence}, unwrapping the inner {@code
+ * promise.create} / {@code promise.settle} action.
  */
 class EffectsTest {
 
@@ -151,13 +152,9 @@ class EffectsTest {
                     respData = Map.of("error", "injected failure");
                 } else
                     switch (kind) {
-                        case "promise.create" -> {
+                        case "task.fence" -> {
                             status = 200;
-                            respData = handleCreate(data);
-                        }
-                        case "promise.settle" -> {
-                            status = 200;
-                            respData = handleSettle(data);
+                            respData = handleFence(data);
                         }
                         default -> {
                             status = 400;
@@ -177,6 +174,24 @@ class EffectsTest {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        /**
+         * Unwrap a {@code task.fence} action and dispatch to {@link #handleCreate} / {@link
+         * #handleSettle}, echoing the fenced promise under {@code action.data} with an empty {@code
+         * preload}. Like Python's test stub this skips lease validation — it exercises the cache
+         * behaviour, not the server's 404/409 fencing (covered against the in-process server).
+         */
+        private Map<String, Object> handleFence(JsonNode data) {
+            JsonNode action = data.path("action");
+            String subKind = action.path("kind").asText("");
+            JsonNode actionData = action.path("data");
+            Map<String, Object> inner =
+                    "promise.settle".equals(subKind) ? handleSettle(actionData) : handleCreate(actionData);
+            Map<String, Object> fence = new LinkedHashMap<>();
+            fence.put("action", Map.of("data", Map.of("promise", inner.get("promise"))));
+            fence.put("preload", List.of());
+            return fence;
         }
 
         private Map<String, Object> handleCreate(JsonNode data) {
@@ -233,7 +248,7 @@ class EffectsTest {
 
         Effects buildEffects(List<PromiseRecord> preload) {
             Sender sender = new Sender(new Transport(network), null);
-            return new Effects(sender, testCodec(), preload);
+            return new Effects(sender, testCodec(), "test-task", 1, preload);
         }
     }
 
@@ -455,7 +470,7 @@ class EffectsTest {
     @Test
     void firstFailureArmsCircuitBreakerThenShortCircuits() {
         Harness harness = new Harness();
-        harness.network.failKind = "promise.create";
+        harness.network.failKind = "task.fence";
         Effects effects = harness.buildEffects(List.of());
 
         CompletionException first = assertThrows(CompletionException.class, () -> effects.createPromise(

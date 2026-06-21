@@ -71,8 +71,17 @@ class ContextTest {
 
     private static Context root(
             List<PromiseRecord> preload, long timeoutAt, Dependencies deps, RetryPolicy policy, Registry registry) {
-        Sender sender = new Sender(new Transport(new LocalNetwork()), null);
-        Effects effects = new Effects(sender, codec(), preload);
+        LocalNetwork network = new LocalNetwork();
+        // Effects fences every create/settle on the active task lease, so seed an acquired "root"
+        // task (version 0) in the in-process server; otherwise the fence would 404 on a missing task.
+        Network.Task task = new Network.Task();
+        task.id = "root";
+        task.state = "acquired";
+        task.version = 0;
+        task.pid = network.pid();
+        network.state.tasks.put("root", task);
+        Sender sender = new Sender(new Transport(network), null);
+        Effects effects = new Effects(sender, codec(), "root", 0, preload);
         return Context.root(
                 "root",
                 "root",

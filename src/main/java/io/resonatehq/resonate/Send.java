@@ -79,6 +79,13 @@ public final class Send {
     public record TaskAcquireResult(TaskRecord task, PromiseRecord promise, List<PromiseRecord> preload) {}
 
     /**
+     * Result of a {@code task.fence}: the created/settled promise plus any sibling promises the
+     * server preloaded alongside it. Mirrors Python's {@code TaskFenceResult} (PR #436) and Go's
+     * {@code TaskFenceResult}.
+     */
+    public record TaskFenceResult(PromiseRecord promise, List<PromiseRecord> preload) {}
+
+    /**
      * Outcome of a {@code task.suspend}: either {@link Suspended} (the task was actually suspended,
      * HTTP 200) or a {@link Redirect} (HTTP 300). Mirrors Python's {@code Literal["suspended"] |
      * Redirect}.
@@ -189,6 +196,32 @@ public final class Send {
             data.put("version", version);
             data.put("action", new SubEnvelope("promise.settle", makeHead(), action));
             return sendEnvelope("task.fulfill", data, false).thenApply(sd -> parsePromise(sd.data()));
+        }
+
+        /**
+         * Create a durable promise via {@code task.fence}, applied only if the task lease ({@code id}
+         * + {@code version}) is still valid — the server rejects a stale lease with 409 rather than
+         * producing a split-brain write. The {@code promise.create} action is wrapped in a
+         * sub-envelope, exactly as {@link #taskFulfill} wraps a {@code promise.settle}.
+         */
+        public CompletableFuture<TaskFenceResult> taskFenceCreate(String id, int version, PromiseCreateReq req) {
+            return taskFence(id, version, "promise.create", req);
+        }
+
+        /**
+         * Settle a durable promise via {@code task.fence}, applied only if the task lease ({@code id}
+         * + {@code version}) is still valid (see {@link #taskFenceCreate}).
+         */
+        public CompletableFuture<TaskFenceResult> taskFenceSettle(String id, int version, PromiseSettleReq req) {
+            return taskFence(id, version, "promise.settle", req);
+        }
+
+        private CompletableFuture<TaskFenceResult> taskFence(String id, int version, String subKind, Object action) {
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("id", id);
+            data.put("version", version);
+            data.put("action", new SubEnvelope(subKind, makeHead(), action));
+            return sendEnvelope("task.fence", data, false).thenApply(sd -> parseTaskFence(sd.data()));
         }
 
         /**
@@ -485,6 +518,22 @@ public final class Send {
         PromiseRecord promise = decodeOrRaise(promiseVal, PromiseRecord.class, "promise in task.acquire");
 
         return new TaskAcquireResult(task, promise, parsePreloaded(data));
+    }
+
+    /**
+     * Parse a {@code task.fence} response. The fenced promise is nested under {@code action.data}
+     * (the server echoes the wrapped sub-envelope's outcome), with sibling promises in {@code
+     * preload}. Mirrors Python's {@code parse_task_fence}.
+     */
+    static TaskFenceResult parseTaskFence(JsonNode data) {
+        JsonNode action = field(data, "action");
+        JsonNode inner = field(action, "data");
+        JsonNode promise = field(inner, "promise");
+        if (promise == null) {
+            throw new DecodingError("missing 'promise' in task.fence response");
+        }
+        PromiseRecord record = decodeOrRaise(promise, PromiseRecord.class, "promise in task.fence");
+        return new TaskFenceResult(record, parsePreloaded(data));
     }
 
     /** Parse a {@code task.suspend} response -- {@link Suspended} (200) or {@link Redirect} (300). */

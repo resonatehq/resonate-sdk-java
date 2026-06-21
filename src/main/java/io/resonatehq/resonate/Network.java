@@ -420,6 +420,10 @@ public interface Network {
                 case "promise.register_listener" -> tryAutoTimeout(now, str(req, "awaited"));
                 case "task.create" -> tryAutoTimeout(now, str(extractActionData(get(req, "action")), "id"));
                 case "task.acquire", "task.release", "task.fulfill" -> tryAutoTimeout(now, str(req, "id"));
+                case "task.fence" -> {
+                    tryAutoTimeout(now, str(req, "id"));
+                    tryAutoTimeout(now, str(extractActionData(get(req, "action")), "id"));
+                }
                 case "task.suspend" -> {
                     tryAutoTimeout(now, str(req, "id"));
                     JsonNode actions = get(req, "actions");
@@ -444,6 +448,7 @@ public interface Network {
                 case "task.acquire" -> taskAcquire(now, corrId, req);
                 case "task.release" -> taskRelease(now, corrId, req);
                 case "task.fulfill" -> taskFulfill(now, corrId, req);
+                case "task.fence" -> taskFence(now, corrId, req);
                 case "task.suspend" -> taskSuspend(now, corrId, req);
                 case "task.heartbeat" -> taskHeartbeat(now, corrId, req);
                 case "schedule.create" -> scheduleCreate(now, corrId, req);
@@ -925,6 +930,49 @@ public interface Network {
             notifySubscribers(promiseId);
 
             return map("kind", "task.fulfill", "corrId", corrId, "status", 200, "promise", promiseRecord);
+        }
+
+        /**
+         * Apply a {@code promise.create} / {@code promise.settle} guarded by the task lease. The
+         * mutation runs only when the task exists, is {@code acquired}, and its version matches the
+         * caller's; a missing task is 404 and a stale lease is 409, so a worker that lost its lease
+         * cannot clobber promise state. The fenced promise is echoed back under {@code action.data}
+         * (the shape {@link Send#parseTaskFence} expects), with sibling promises in {@code preload}.
+         */
+        Map<String, Object> taskFence(long now, Object corrId, JsonNode req) {
+            String taskId = requireStr(req, "id");
+            long version = i64(req, "version", 0);
+
+            Task t = tasks.get(taskId);
+            if (t == null) {
+                return map("kind", "task.fence", "corrId", corrId, "status", 404);
+            }
+            if (!"acquired".equals(t.state) || t.version != version) {
+                return map("kind", "task.fence", "corrId", corrId, "status", 409);
+            }
+
+            JsonNode action = get(req, "action");
+            String subKind = str(action, "kind");
+            JsonNode actionData = extractActionData(action);
+
+            Map<String, Object> inner =
+                    switch (subKind) {
+                        case "promise.create" -> promiseCreate(now, corrId, actionData);
+                        case "promise.settle" -> promiseSettle(now, corrId, actionData);
+                        default -> throw new ServerError(400, "unknown fence action kind: " + subKind);
+                    };
+
+            return map(
+                    "kind",
+                    "task.fence",
+                    "corrId",
+                    corrId,
+                    "status",
+                    200,
+                    "action",
+                    map("data", map("promise", inner.get("promise"))),
+                    "preload",
+                    preload(taskId));
         }
 
         Map<String, Object> taskSuspend(long now, Object corrId, JsonNode req) {

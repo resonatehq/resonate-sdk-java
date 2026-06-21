@@ -25,6 +25,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * across an {@code await}, so no synchronization is needed (the analogue of Python's single-threaded
  * asyncio dict).
  *
+ * <p><b>Task fencing.</b> Every durable promise mutation is fenced on the active task's lease
+ * ({@code taskId} + {@code taskVersion}): both create and settle go through {@code task.fence}, so a
+ * worker whose lease has expired (and been re-acquired elsewhere) cannot clobber promise state — the
+ * server rejects the mutation with a 409 instead of producing a split-brain write. Each fence
+ * response also carries a {@code preload} snapshot of sibling promises, absorbed into the cache.
+ *
  * <p><b>Circuit breaker.</b> The first durable-op failure flips {@link #stopped}; every later op
  * then short-circuits with a {@link PlatformError} carrying a {@link StoppedError}, so no further
  * work happens and the task is released for re-delivery.
@@ -47,20 +53,17 @@ public final class Effects {
 
     private final Sender sender;
     private final Codec codec;
+    // The active task's lease, used as the fencing token on every promise mutation (create/settle).
+    private final String taskId;
+    private final int taskVersion;
     // Python's plain dict is safe because asyncio is single-threaded. In Java the .handle()
     // continuations below run on whichever thread completes the sender future -- a SEND_EXECUTOR
     // thread for the HTTP network -- while the entry reads run on the caller thread, so the writes
-    // and reads cross threads. ConcurrentHashMap makes put/get atomic and a double-put is
-    // idempotent (same id -> same decoded record); the breaker flag is volatile and monotonic.
+    // and reads cross threads. ConcurrentHashMap makes put/get atomic; monotonic inserts use
+    // compute() so the get-check-put is atomic too; the breaker flag is volatile and monotonic.
     private final Map<String, PromiseRecord> cache = new ConcurrentHashMap<>();
     private volatile boolean stopped = false;
 
-    /**
-     * Build effects from a {@link Sender}, {@link Codec}, and optional preloaded promises.
-     *
-     * <p>Each preloaded record is decoded into the cache; one that fails to decode (a {@link
-     * ResonateError}) is silently skipped, mirroring Python.
-     */
     /**
      * The decoded-record cache. Package-private: exposed for the behaviour tests, mirroring Python's
      * directly-reachable {@code effects.cache}. The runtime reaches it only through {@link
@@ -70,18 +73,20 @@ public final class Effects {
         return cache;
     }
 
-    public Effects(Sender sender, Codec codec, List<PromiseRecord> preload) {
+    /**
+     * Build effects from a {@link Sender}, {@link Codec}, the active task's lease ({@code taskId} /
+     * {@code taskVersion}, used as the fencing token on every promise mutation), and optional
+     * preloaded promises.
+     *
+     * <p>Each preloaded record is decoded into the cache; one that fails to decode (a {@link
+     * ResonateError}) is silently skipped, mirroring Python.
+     */
+    public Effects(Sender sender, Codec codec, String taskId, int taskVersion, List<PromiseRecord> preload) {
         this.sender = sender;
         this.codec = codec;
-        for (PromiseRecord p : preload) {
-            PromiseRecord decoded;
-            try {
-                decoded = codec.decodePromise(p);
-            } catch (ResonateError exc) {
-                continue;
-            }
-            cache.put(decoded.id(), decoded);
-        }
+        this.taskId = taskId;
+        this.taskVersion = taskVersion;
+        absorb(preload);
     }
 
     /**
@@ -113,12 +118,14 @@ public final class Effects {
         }
 
         String inv = invocation;
-        return sender.promiseCreate(encodedReq).handle((record, exc) -> {
+        // Fenced on the active task lease; absorb any sibling promises preloaded with the response.
+        return sender.taskFenceCreate(taskId, taskVersion, encodedReq).handle((res, exc) -> {
             if (exc != null) {
                 throw platformFrom(exc);
             }
-            PromiseRecord decoded = decodeOrStop(record);
-            cache.put(decoded.id(), decoded);
+            absorb(res.preload());
+            PromiseRecord decoded = decodeOrStop(res.promise());
+            insertMonotonic(decoded);
             LOGGER.log(
                     Level.INFO,
                     "promise_create_response promise_id={0} invocation={1} state={2}",
@@ -159,18 +166,48 @@ public final class Effects {
             return CompletableFuture.failedFuture(new PlatformError(List.of(exc)));
         }
 
-        return sender.promiseSettle(req).handle((record, exc) -> {
+        // Fenced on the active task lease; absorb any sibling promises preloaded with the response.
+        return sender.taskFenceSettle(taskId, taskVersion, req).handle((res, exc) -> {
             if (exc != null) {
                 throw platformFrom(exc);
             }
-            PromiseRecord decoded = decodeOrStop(record);
+            absorb(res.preload());
+            PromiseRecord decoded = decodeOrStop(res.promise());
             LOGGER.log(Level.INFO, "promise_settle_response promise_id={0} state={1}", decoded.id(), decoded.state());
-            cache.put(decoded.id(), decoded);
+            insertMonotonic(decoded);
             return decoded;
         });
     }
 
     // -- internal helpers -----------------------------------------------------
+
+    /**
+     * Decode and merge server-provided records (a fence {@code preload} snapshot of sibling
+     * promises, or the initial constructor preload) into the cache. A record that fails to decode (a
+     * {@link ResonateError}) is silently skipped, mirroring Python.
+     */
+    private void absorb(List<PromiseRecord> records) {
+        for (PromiseRecord p : records) {
+            PromiseRecord decoded;
+            try {
+                decoded = codec.decodePromise(p);
+            } catch (ResonateError exc) {
+                continue;
+            }
+            insertMonotonic(decoded);
+        }
+    }
+
+    /**
+     * Insert a decoded record, preserving monotonicity: promise state only moves Pending → terminal
+     * and is then immutable, so a terminal cache entry is never overwritten by a (possibly stale)
+     * record. {@link Map#compute} keeps the get-check-put atomic across the cross-thread writers.
+     */
+    private void insertMonotonic(PromiseRecord record) {
+        cache.compute(
+                record.id(),
+                (id, existing) -> (existing != null && !"pending".equals(existing.state())) ? existing : record);
+    }
 
     /** Decode a record, arming the circuit breaker and surfacing a {@link PlatformError} on failure. */
     private PromiseRecord decodeOrStop(PromiseRecord record) {

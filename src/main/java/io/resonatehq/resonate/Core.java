@@ -190,7 +190,7 @@ public final class Core {
                 LOGGER.log(Level.DEBUG, "core: starting execution task_id={0} promise_id={1}", taskId, promise.id());
                 List<PromiseRecord> currentPreload = preload;
                 while (true) {
-                    Effects effects = new Effects(sender, codec, currentPreload);
+                    Effects effects = new Effects(sender, codec, taskId, taskVersion, currentPreload);
                     ExecOutcome outcome = executeUntilBlockedInner(promise, effects);
 
                     if (outcome instanceof ExecFulfilled fulfilled) {

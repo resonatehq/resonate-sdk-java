@@ -70,7 +70,7 @@ class InvariantsTest {
 
     // ── Self-contained in-memory promise store (create / settle only) ────────
 
-    /** An in-memory promise store mimicking the server; handles only {@code promise.create} / {@code promise.settle}. */
+    /** An in-memory promise store mimicking the server; handles {@code task.fence} (the fenced {@code promise.create} / {@code promise.settle}). */
     static final class StubNetwork implements Network {
         final Map<String, Map<String, Object>> promises = new LinkedHashMap<>();
 
@@ -123,13 +123,9 @@ class InvariantsTest {
                 int status;
                 Object respData;
                 switch (kind) {
-                    case "promise.create" -> {
+                    case "task.fence" -> {
                         status = 200;
-                        respData = handleCreate(data);
-                    }
-                    case "promise.settle" -> {
-                        status = 200;
-                        respData = handleSettle(data);
+                        respData = handleFence(data);
                     }
                     default -> {
                         status = 400;
@@ -149,6 +145,19 @@ class InvariantsTest {
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        /** Unwrap a {@code task.fence} action and echo the fenced promise under {@code action.data} (no lease check). */
+        private Map<String, Object> handleFence(JsonNode data) {
+            JsonNode action = data.path("action");
+            String subKind = action.path("kind").asText("");
+            JsonNode actionData = action.path("data");
+            Map<String, Object> inner =
+                    "promise.settle".equals(subKind) ? handleSettle(actionData) : handleCreate(actionData);
+            Map<String, Object> fence = new LinkedHashMap<>();
+            fence.put("action", Map.of("data", Map.of("promise", inner.get("promise"))));
+            fence.put("preload", List.of());
+            return fence;
         }
 
         private Map<String, Object> handleCreate(JsonNode data) {
@@ -238,12 +247,12 @@ class InvariantsTest {
         final Core core = new Core(null, codec, reg, null, null, "invariants-test", TTL, null, null);
 
         Effects newEffects() {
-            return new Effects(sender, codec, List.of());
+            return new Effects(sender, codec, "f", 0, List.of());
         }
 
         /** Fork: a new Effects over the same network, seeded with a copy of the current decoded cache. */
         Effects fork(Effects effects) {
-            Effects copy = new Effects(sender, codec, List.of());
+            Effects copy = new Effects(sender, codec, "f", 0, List.of());
             copy.cache().putAll(effects.cache());
             return copy;
         }

@@ -25,6 +25,7 @@ import io.resonatehq.resonate.Send.SuspendResult;
 import io.resonatehq.resonate.Send.Suspended;
 import io.resonatehq.resonate.Send.TaskAcquireResult;
 import io.resonatehq.resonate.Send.TaskCreateOutcome;
+import io.resonatehq.resonate.Send.TaskFenceResult;
 import io.resonatehq.resonate.Types.PromiseCreateReq;
 import io.resonatehq.resonate.Types.PromiseRecord;
 import io.resonatehq.resonate.Types.PromiseRegisterCallbackData;
@@ -299,6 +300,73 @@ class SendTest {
         PromiseRecord promise = await(
                 sender.taskFulfill("t1", 0, new PromiseSettleReq("rt-p3", "resolved", new Value(null, "result"))));
         assertEquals("rt-p3", promise.id());
+    }
+
+    @Test
+    void taskFenceCreateRoundtrip() {
+        // task.fence echoes the fenced promise under action.data.promise, with sibling promises in
+        // preload. Mirrors Python's test_task_fence_create_roundtrip.
+        StubNetwork net = new StubNetwork(req -> {
+            String childId = req.get("data").get("action").get("data").get("id").asText();
+            return response(
+                    req,
+                    200,
+                    Map.of("action", Map.of("data", Map.of("promise", cannedPromise(childId))), "preload", List.of()));
+        });
+        Sender sender = sender(net, null);
+
+        TaskFenceResult res = await(sender.taskFenceCreate(
+                "t1", 0, new PromiseCreateReq("rt-fence-child", I64_MAX, new Value(), Map.of())));
+        assertEquals("rt-fence-child", res.promise().id());
+        assertEquals("pending", res.promise().state());
+        assertEquals(List.of(), res.preload());
+    }
+
+    @Test
+    void taskFenceSettleRoundtrip() {
+        // The settle variant unwraps the same action.data.promise shape (Rust covers this as
+        // task_fence_settle_roundtrip; Python only round-trips the create variant).
+        StubNetwork net = new StubNetwork(req -> {
+            String id = req.get("data").get("action").get("data").get("id").asText();
+            Map<String, Object> settled = Map.of(
+                    "id",
+                    id,
+                    "state",
+                    "resolved",
+                    "timeoutAt",
+                    I64_MAX,
+                    "param",
+                    Map.of(),
+                    "value",
+                    Map.of(),
+                    "tags",
+                    Map.of(),
+                    "createdAt",
+                    0);
+            return response(
+                    req, 200, Map.of("action", Map.of("data", Map.of("promise", settled)), "preload", List.of()));
+        });
+        Sender sender = sender(net, null);
+
+        TaskFenceResult res = await(sender.taskFenceSettle(
+                "t1", 0, new PromiseSettleReq("rt-fence-child", "resolved", new Value(null, "result"))));
+        assertEquals("rt-fence-child", res.promise().id());
+        assertEquals("resolved", res.promise().state());
+    }
+
+    @Test
+    void taskFenceStaleLeaseRaisesServerError() {
+        // A stale lease is rejected by the server with 409; task.fence does not allow 409 (unlike
+        // task.create's conflict path), so it surfaces as a ServerError. The complementary "the
+        // mutation is a no-op on server state" half is covered against LocalNetwork in NetworkTest.
+        StubNetwork net = new StubNetwork(req -> response(req, 409, Map.of()));
+        Sender sender = sender(net, null);
+
+        ServerError exc = assertThrows(
+                ServerError.class,
+                () -> await(sender.taskFenceCreate(
+                        "t1", 1, new PromiseCreateReq("rt-fence-child", I64_MAX, new Value(), Map.of()))));
+        assertEquals(409, exc.code());
     }
 
     @Test
