@@ -37,7 +37,7 @@ brew install resonatehq/tap/resonate
 
 2. Add the SDK to your build
 
-The SDK is published to Maven Central as `io.resonatehq:resonate-sdk-java`. With Gradle (Kotlin DSL):
+The SDK is published to Maven Central as `io.resonatehq:resonate-sdk-java` and requires **Java 21+**. These files go in a Gradle project — starting from scratch, `gradle init` scaffolds the layout, the `settings.gradle.kts`, and the `./gradlew` wrapper that step 5 uses. With Gradle (Kotlin DSL):
 
 ```kotlin
 // build.gradle.kts
@@ -78,7 +78,7 @@ Jackson (`com.fasterxml.jackson.core:jackson-databind`) comes in transitively fo
 
 3. Write your first Resonate function
 
-A durable greeting. `greet` runs as a durable workflow: it calls a leaf function through `ctx.run`, and `Resonate` records that call as a durable child so a crash resumes from the checkpoint rather than re-running from the top.
+Create `src/main/java/myapp/Main.java`. `greet` runs as a durable workflow: it calls a leaf function through `ctx.run`, and `Resonate` records that call as a durable child so a crash resumes from the checkpoint rather than re-running from the top.
 
 ```java
 // src/main/java/myapp/Main.java
@@ -116,7 +116,7 @@ public final class Main {
 
 The SDK ships runnable example programs — hello-world, pipeline, saga, human-in-the-loop, retries, and more — under [`src/examples`](https://github.com/resonatehq/resonate-sdk-java/tree/main/src/examples).
 
-4. Start the server
+4. Start the server (leave it running in its own terminal)
 
 ```shell
 resonate dev
@@ -135,7 +135,7 @@ This one process does two jobs: `register` makes it a worker that can execute `g
 You'll see the durable promise ID and the greeting once the workflow settles:
 
 ```text
-greet-178446123456789 -> hello, world!
+greet-1784461234567890 -> hello, world!
 ```
 
 **What to try**
