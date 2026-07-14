@@ -17,7 +17,7 @@ plugins {
 
 group = "io.resonatehq"
 
-version = "0.1.1"
+version = "0.1.2"
 
 description = "Distributed Async Await by Resonate HQ, Inc"
 

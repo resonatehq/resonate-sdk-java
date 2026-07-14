@@ -11,7 +11,7 @@
 
 # Resonate Java SDK
 
-> ⚠️ **Pre-release.** The Java SDK is at `0.1.1` — the first version published to Maven Central — and APIs may change before the surface settles. Check the [open issues](https://github.com/resonatehq/resonate-sdk-java/issues) for known gaps. The internal protocol is stable; the Java API surface is still settling.
+> ⚠️ **Pre-release.** The Java SDK is at `0.1.2` on Maven Central, and APIs may change before the surface settles. Check the [open issues](https://github.com/resonatehq/resonate-sdk-java/issues) for known gaps. The internal protocol is stable; the Java API surface is still settling.
 
 ## About this component
 
@@ -50,7 +50,7 @@ repositories {
 }
 
 dependencies {
-    implementation("io.resonatehq:resonate-sdk-java:0.1.1")
+    implementation("io.resonatehq:resonate-sdk-java:0.1.2")
 }
 
 java {
@@ -70,7 +70,7 @@ Using Maven instead? The coordinates are the same:
 <dependency>
     <groupId>io.resonatehq</groupId>
     <artifactId>resonate-sdk-java</artifactId>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
 </dependency>
 ```
 
