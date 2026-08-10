@@ -335,7 +335,7 @@ class CoreTest {
         String status = fix.core.executeUntilBlockedOuter("p1-wait", rt.version(), rt.promise(), rt.preload());
         assertEquals("suspended", status);
 
-        PromiseRecord child = fix.promiseGetRaw("p1-wait.1");
+        PromiseRecord child = fix.promiseGetRaw("p1-wait:1");
         assertEquals("pending", child.state());
     }
 
@@ -391,16 +391,16 @@ class CoreTest {
         RootTask rt = fix.createRootTask("p1-pre", "readPre");
         fix.reg.register("readPre", CoreTest::wfReadPreloaded);
 
-        // Pre-resolve the child the workflow will read. ctx.rpc generates the child id "p1-pre.1".
+        // Pre-resolve the child the workflow will read. ctx.rpc generates the child id "p1-pre:1".
         // Children are codec-encoded on the wire just like root promises, so pre-settle with
         // codec.encode to match.
         Value encVal = fix.codec.encode(99);
-        await(fix.sender.promiseCreate(new PromiseCreateReq("p1-pre.1", FAR_FUTURE, new Value(), Map.of())));
-        await(fix.sender.promiseSettle(new PromiseSettleReq("p1-pre.1", "resolved", encVal)));
+        await(fix.sender.promiseCreate(new PromiseCreateReq("p1-pre:1", FAR_FUTURE, new Value(), Map.of())));
+        await(fix.sender.promiseSettle(new PromiseSettleReq("p1-pre:1", "resolved", encVal)));
 
         // Feed the preloaded child to Effects via the preload arg too, exercising the
         // seed-at-construction path.
-        PromiseRecord pre = await(fix.sender.promiseGet("p1-pre.1"));
+        PromiseRecord pre = await(fix.sender.promiseGet("p1-pre:1"));
         List<PromiseRecord> preload = List.of(pre);
 
         String status = fix.core.executeUntilBlockedOuter("p1-pre", rt.version(), rt.promise(), preload);
