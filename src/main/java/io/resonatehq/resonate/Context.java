@@ -331,7 +331,12 @@ public final class Context {
     // ``ctx._next_id()`` / ``ctx._child_timeout(...)``.
     String nextId() {
         state.seq += 1;
-        return state.id + "." + state.seq;
+        // The id is `<promiseId>:<lineage>`: a single `:` separates the promiseId
+        // (lineage origin) from the lineage, and `.` separates lineage segments.
+        // The first segment minted off a bare promiseId (id == originId) uses `:`
+        // (`root` -> `root:1`); every deeper segment uses `.` (`root:1.1`).
+        String sep = state.id.equals(state.originId) ? ":" : ".";
+        return state.id + sep + state.seq;
     }
 
     long childTimeout(Duration requested) {
@@ -594,14 +599,14 @@ public final class Context {
 
     /**
      * Fire-and-forget remote dispatch. The id is minted off the propagated prefix as {@code
-     * {prefix}.d{16hex}}, the lineage origin is reset to the child's own id (a fresh lineage), and the
+     * {prefix}:d{16hex}}, the lineage origin is reset to the child's own id (a fresh lineage), and the
      * future resolves to the child id without ever suspending.
      */
     public ResonateFuture<String> detached(String fn, Object... args) {
         state.workflow = true;
         Chain.Link link = state.chain.link();
 
-        String childId = state.prefixId + ".d" + hashId(nextId());
+        String childId = state.prefixId + ":d" + hashId(nextId());
         TaskData data = new TaskData(Arrays.asList(args), Map.of(), fn, opts.version());
         PromiseCreateReq req = globalReq(childId, opts.timeout(), data, resolveTarget(opts.target()), false, childId);
 
@@ -747,7 +752,7 @@ public final class Context {
      * <p>Python's {@code _hash_id} uses BLAKE2b with an 8-byte digest, but the digest only needs to
      * be a stable, collision-resistant id segment -- the exact algorithm is irrelevant since nothing
      * cross-checks it against the Python output. SHA-256 (a {@link MessageDigest} every JVM ships)
-     * truncated to 8 bytes yields the same 16-hex-char {@code {prefix}.d{16hex}} shape.
+     * truncated to 8 bytes yields the same 16-hex-char {@code {prefix}:d{16hex}} shape.
      */
     static String hashId(String s) {
         MessageDigest digest;

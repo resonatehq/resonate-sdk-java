@@ -435,7 +435,7 @@ class PlatformErrorsTest {
                 ServerError.class,
                 () -> fix.core.executeUntilBlockedOuter("pe-ff", rt.version(), rt.promise(), rt.preload()));
         // The child's settle never landed.
-        assertEquals("pending", fix.promiseGetRaw("pe-ff.1").state());
+        assertEquals("pending", fix.promiseGetRaw("pe-ff:1").state());
         fix.assertReleasedRootPending("pe-ff");
     }
 
