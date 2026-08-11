@@ -76,7 +76,6 @@ class ContextTest {
         return Context.root(
                 "root",
                 "root",
-                "root",
                 timeoutAt,
                 "root",
                 effects,
@@ -101,8 +100,8 @@ class ContextTest {
         return codec().convert(paramData, TaskData.class);
     }
 
-    private static String detachedId(String prefix, String raw) {
-        return prefix + ":d" + Context.hashId(raw);
+    private static String detachedId(String raw) {
+        return "root:d" + Context.hashId(raw);
     }
 
     // =========================================================================
@@ -685,8 +684,7 @@ class ContextTest {
                         "resonate:target", "",
                         "resonate:branch", "root:1",
                         "resonate:parent", "root",
-                        "resonate:origin", "root",
-                        "resonate:prefix", "root"),
+                        "resonate:origin", "root"),
                 record.tags());
         assertEquals(
                 new TaskData(List.of(1, 2), Map.of(), "remote_fn", 1),
@@ -787,7 +785,6 @@ class ContextTest {
                         "resonate:branch", "root:1",
                         "resonate:parent", "root",
                         "resonate:origin", "root",
-                        "resonate:prefix", "root",
                         "resonate:timer", "true"),
                 record.tags());
         assertEquals(null, record.param().data());
@@ -868,8 +865,7 @@ class ContextTest {
                         "resonate:scope", "global",
                         "resonate:branch", "root:1",
                         "resonate:parent", "root",
-                        "resonate:origin", "root",
-                        "resonate:prefix", "root"),
+                        "resonate:origin", "root"),
                 record.tags());
         assertEquals(null, record.param().data());
     }
@@ -917,7 +913,7 @@ class ContextTest {
     @Test
     void detachedReturnsIdWithoutSuspending() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         assertEquals(childId, ctx.detached("remote_fn", 1, 2).await());
         assertEquals(List.of(), ctx.spawnedRemote());
         assertEquals("pending", ctx.effects().cache().get(childId).state());
@@ -927,7 +923,7 @@ class ContextTest {
     void detachedIdIsPrefixRootedHash() {
         Context ctx = root();
         String childId = ctx.detached("remote_fn").await();
-        assertEquals(detachedId("root", "root:1"), childId);
+        assertEquals(detachedId("root:1"), childId);
         assertNotEquals("root:1", childId);
         String suffix = childId.substring(childId.indexOf(':') + 1);
         assertEquals('d', suffix.charAt(0));
@@ -940,15 +936,15 @@ class ContextTest {
         Context ctx = root();
         String id1 = ctx.detached("fn").await();
         String id2 = ctx.detached("fn").await();
-        assertEquals(detachedId("root", "root:1"), id1);
-        assertEquals(detachedId("root", "root:2"), id2);
+        assertEquals(detachedId("root:1"), id1);
+        assertEquals(detachedId("root:2"), id2);
         assertNotEquals(id1, id2);
     }
 
     @Test
     void detachedRequestTagsAndParam() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         ctx.detached("remote_fn", 1, 2).await();
         PromiseRecord record = ctx.effects().cache().get(childId);
         assertEquals(
@@ -957,8 +953,7 @@ class ContextTest {
                         "resonate:target", "",
                         "resonate:branch", childId,
                         "resonate:parent", "root",
-                        "resonate:origin", childId,
-                        "resonate:prefix", "root"),
+                        "resonate:origin", childId),
                 record.tags());
         assertEquals(
                 new TaskData(List.of(1, 2), Map.of(), "remote_fn", 1),
@@ -968,7 +963,7 @@ class ContextTest {
     @Test
     void detachedNoArgsParamIsEmpty() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         ctx.detached("remote_fn").await();
         assertEquals(
                 new TaskData(List.of(), Map.of(), "remote_fn", 1),
@@ -978,7 +973,7 @@ class ContextTest {
     @Test
     void detachedIdempotentOnPreloadedRecord() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         ctx.effects().cache().put(childId, codec().decodePromise(resolved(childId, "external-result")));
         assertEquals(childId, ctx.detached("fn").await());
         assertEquals(List.of(), ctx.spawnedRemote());
@@ -987,7 +982,7 @@ class ContextTest {
     @Test
     void detachedWithOptionsTargetAndTimeout() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         long before = Send.nowMs();
         ctx.options(new Opts().withTimeout(Duration.ofSeconds(30)).withTarget("worker-1"))
                 .detached("fn")
@@ -1011,7 +1006,7 @@ class ContextTest {
     void detachedTimeoutCappedToParent() {
         long cap = Send.nowMs() + 5_000;
         Context ctx = rootTimeout(cap);
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         ctx.options(new Opts().withTimeout(Duration.ofDays(365))).detached("fn").await();
         assertEquals(cap, ctx.effects().cache().get(childId).timeoutAt());
     }
@@ -1023,7 +1018,7 @@ class ContextTest {
         assertEquals(List.of(), ctx.spawnedRemote());
         assertEquals("resolved", ctx.effects().cache().get("root:1").state());
         assertEquals("done", ctx.effects().cache().get("root:1").value().data());
-        String detached = detachedId("root", "root:1.1");
+        String detached = detachedId("root:1.1");
         assertEquals("pending", ctx.effects().cache().get(detached).state());
     }
 
@@ -1040,7 +1035,7 @@ class ContextTest {
     @Test
     void detachedCreatePromiseCompletesByFlushWhenUnawaited() {
         Context ctx = root();
-        String childId = detachedId("root", "root:1");
+        String childId = detachedId("root:1");
         ResonateFuture<String> fut = ctx.detached("remote_fn", 1, 2);
         // The create is driven through the chain; join the flush to guarantee it completed.
         ctx.flushLocalWork().join();

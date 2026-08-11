@@ -277,7 +277,6 @@ class ResonateTest {
     void localConstructorSetsDefaults() {
         Resonate r = local();
         assertEquals("default", r.pid);
-        assertEquals("", r.idPrefix);
         assertEquals(Resonate.DEFAULT_TTL, r.ttl);
         assertInstanceOf(LocalNetwork.class, r.network);
     }
@@ -289,20 +288,6 @@ class ResonateTest {
         assertEquals("worker-1", r.pid);
         assertTrue(r.network.unicast().contains("worker-1"));
         assertTrue(r.network.unicast().contains("workers"));
-    }
-
-    @Test
-    void configWithPrefix() {
-        Resonate r = track(
-                Resonate.builder().retryPolicy(new Never()).prefix("myapp").ttl(Duration.ofSeconds(30)));
-        assertEquals("myapp:", r.idPrefix);
-        assertEquals(Duration.ofSeconds(30), r.ttl);
-    }
-
-    @Test
-    void configWithEmptyPrefix() {
-        Resonate r = track(Resonate.builder().retryPolicy(new Never()).prefix(""));
-        assertEquals("", r.idPrefix);
     }
 
     @Test
@@ -431,13 +416,6 @@ class ResonateTest {
     }
 
     @Test
-    void runWithPrefixPrependsId() {
-        Resonate r = track(Resonate.builder().retryPolicy(new Never()).prefix("app"));
-        r.register(ResonateTest::noop);
-        assertEquals("app:my-id", await(r.run("my-id", ResonateTest::noop).id()));
-    }
-
-    @Test
     void runUnregisteredRaisesSynchronously() {
         Resonate r = local();
         // Refused at the call site: an unregistered object's registry name is not its method name.
@@ -557,14 +535,6 @@ class ResonateTest {
         r.rpc("rpc-1", "remote_fn", 1);
         // The promise is created even though no function is registered locally.
         assertEquals("pending", waitForPromise(r, "rpc-1").state());
-    }
-
-    @Test
-    void rpcWithPrefix() {
-        Resonate r = track(Resonate.builder().retryPolicy(new Never()).prefix("svc"));
-        ResonateHandle<Object> h = r.rpc("rpc-2", "remote");
-        assertEquals("svc:rpc-2", await(h.id()));
-        waitForPromise(r, "svc:rpc-2");
     }
 
     @Test
@@ -795,15 +765,6 @@ class ResonateTest {
     }
 
     @Test
-    void getWithPrefixPrepends() {
-        Resonate r = track(Resonate.builder().retryPolicy(new Never()).prefix("ns"));
-        r.rpc("p1", "remote");
-        waitForPromise(r, "ns:p1");
-        ResonateHandle<Object> handle = r.get("p1");
-        assertEquals("ns:p1", await(handle.id()));
-    }
-
-    @Test
     void getPendingPromiseReturnsUnsettledHandle() {
         Resonate r = local();
         r.rpc("g-pending", "remote");
@@ -858,23 +819,6 @@ class ResonateTest {
         ResonateHandle<Object> h2 = r.get("multi");
         assertEquals(5, h1.result());
         assertEquals(5, h2.result());
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  id prefix consistency
-    // ═══════════════════════════════════════════════════════════════════════
-
-    @Test
-    void prefixAppliedConsistentlyToRunRpcGet() {
-        Resonate r = track(Resonate.builder().retryPolicy(new Never()).prefix("p"));
-        r.register(ResonateTest::add);
-        var h1 = r.run("id1", ResonateTest::add, 1, 1);
-        assertEquals("p:id1", await(h1.id()));
-        ResonateHandle<Object> h2 = r.rpc("id2", "remote");
-        assertEquals("p:id2", await(h2.id()));
-        waitForPromise(r, "p:id2");
-        ResonateHandle<Object> h3 = r.get("id2");
-        assertEquals("p:id2", await(h3.id()));
     }
 
     // ═══════════════════════════════════════════════════════════════════════

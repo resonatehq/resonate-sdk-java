@@ -319,11 +319,6 @@ public final class Core {
                 // child's own id (a new lineage). Falling back to promise.id when absent keeps a genuine
                 // top-level root (whose tag equals its id anyway) and any tag-less promise correct.
                 promise.tags().getOrDefault("resonate:origin", promise.id()),
-                // The id-generation prefix from resonate:prefix. Unlike origin it is propagated
-                // unchanged across detached re-roots, so every recursion level mints {prefix}:{16hex}
-                // off the same fixed prefix instead of off its own grown id -- this is what bounds
-                // recursive detached ids. Falls back to promise.id when absent, matching origin.
-                promise.tags().getOrDefault("resonate:prefix", promise.id()),
                 promise.timeoutAt(),
                 taskData.func(),
                 effects,

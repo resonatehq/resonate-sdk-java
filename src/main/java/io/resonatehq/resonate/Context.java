@@ -152,7 +152,6 @@ public final class Context {
     private static final class State {
         final String id;
         final String originId;
-        final String prefixId;
         final String branchId;
         final String parentId;
         final String funcName;
@@ -180,7 +179,6 @@ public final class Context {
         State(
                 String id,
                 String originId,
-                String prefixId,
                 String branchId,
                 String parentId,
                 String funcName,
@@ -193,7 +191,6 @@ public final class Context {
                 Registry registry) {
             this.id = id;
             this.originId = originId;
-            this.prefixId = prefixId;
             this.branchId = branchId;
             this.parentId = parentId;
             this.funcName = funcName;
@@ -218,15 +215,13 @@ public final class Context {
     /**
      * Build a root context.
      *
-     * <p>{@code originId} is the lineage origin (a {@code detached} child resets it to its own id);
-     * {@code prefixId} is the id-generation prefix, propagated unchanged across {@code detached}
-     * re-roots. For a genuine top-level root both equal {@code id}. A {@code null} {@code retryPolicy}
+     * <p>{@code originId} is the lineage origin (a {@code detached} child resets it to its own id).
+     * For a genuine top-level root originId equals {@code id}. A {@code null} {@code retryPolicy}
      * defaults to {@link Never} and a {@code null} {@code registry} to an empty one (test paths).
      */
     public static Context root(
             String id,
             String originId,
-            String prefixId,
             long timeoutAt,
             String funcName,
             Effects effects,
@@ -237,7 +232,6 @@ public final class Context {
         State st = new State(
                 id,
                 originId,
-                prefixId,
                 id,
                 id,
                 funcName,
@@ -258,7 +252,6 @@ public final class Context {
         State st = new State(
                 id,
                 state.originId,
-                state.prefixId,
                 id,
                 state.id,
                 funcName,
@@ -366,7 +359,6 @@ public final class Context {
         tags.put("resonate:branch", id);
         tags.put("resonate:parent", state.id);
         tags.put("resonate:origin", resolvedOrigin);
-        tags.put("resonate:prefix", state.prefixId);
         if (timer) {
             tags.put("resonate:timer", "true");
         }
@@ -429,7 +421,6 @@ public final class Context {
         tags.put("resonate:branch", state.branchId);
         tags.put("resonate:parent", state.id);
         tags.put("resonate:origin", state.originId);
-        tags.put("resonate:prefix", state.prefixId);
         PromiseCreateReq req = new PromiseCreateReq(nextId(), childTimeout(opts.timeout()), new Value(), tags);
 
         // Record the local child before its promise is created (call-order siblings). Idempotent.
@@ -606,7 +597,7 @@ public final class Context {
         state.workflow = true;
         Chain.Link link = state.chain.link();
 
-        String childId = state.prefixId + ":d" + hashId(nextId());
+        String childId = state.originId + ":d" + hashId(nextId());
         TaskData data = new TaskData(Arrays.asList(args), Map.of(), fn, opts.version());
         PromiseCreateReq req = globalReq(childId, opts.timeout(), data, resolveTarget(opts.target()), false, childId);
 

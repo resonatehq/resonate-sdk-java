@@ -152,7 +152,6 @@ public final class Resonate {
         private String token;
         private Encryptor encryptor;
         private Hb heartbeat;
-        private String prefix;
         private Integer maxConcurrentTasks;
         private RetryPolicy retryPolicy;
 
@@ -196,11 +195,6 @@ public final class Resonate {
             return this;
         }
 
-        public Builder prefix(String prefix) {
-            this.prefix = prefix;
-            return this;
-        }
-
         public Builder maxConcurrentTasks(Integer maxConcurrentTasks) {
             this.maxConcurrentTasks = maxConcurrentTasks;
             return this;
@@ -219,7 +213,6 @@ public final class Resonate {
     // -- Construction-time wiring (set once, shared by reference across option handles) ----------
 
     final Duration ttl;
-    final String idPrefix;
     final Network network;
     final String pid;
     final Codec codec;
@@ -257,7 +250,6 @@ public final class Resonate {
         RetryPolicy resolvedRetryPolicy =
                 b.retryPolicy != null ? b.retryPolicy : new Exponential(1, 30, 2, Long.MAX_VALUE);
 
-        String resolvedPrefix = b.prefix != null ? b.prefix : System.getenv("RESONATE_PREFIX");
         String auth = b.token != null ? b.token : System.getenv("RESONATE_TOKEN");
 
         Network net = selectNetwork(b.url, b.network, b.group, b.pid, auth);
@@ -282,7 +274,6 @@ public final class Resonate {
         // Wiring is assigned before Core is built so the resolver -- invoked lazily at dispatch time
         // -- sees a fully-wired network (the analogue of Python handing over a bound method).
         this.ttl = resolvedTtl;
-        this.idPrefix = resolvedPrefix != null && !resolvedPrefix.isEmpty() ? resolvedPrefix + ":" : "";
         this.network = net;
         this.pid = netPid;
         this.codec = codec;
@@ -310,7 +301,6 @@ public final class Resonate {
     /** Copy constructor used by {@link #options}: shares all wiring + runtime, carries a new {@link Opts}. */
     private Resonate(Resonate base, Opts opts) {
         this.ttl = base.ttl;
-        this.idPrefix = base.idPrefix;
         this.network = base.network;
         this.pid = base.pid;
         this.codec = base.codec;
@@ -523,12 +513,10 @@ public final class Resonate {
             throw new FunctionNotFoundError(name, version);
         }
 
-        String prefixedId = prefixId(id);
-        PromiseCreateReq req =
-                buildRootPromiseCreateReq(prefixedId, name, df.packArgs(args), version, o.timeout(), o.target());
+        PromiseCreateReq req = buildRootPromiseCreateReq(id, name, df.packArgs(args), version, o.timeout(), o.target());
 
         CompletableFuture<Void> created = new CompletableFuture<>();
-        Sub s = subscribe(prefixedId);
+        Sub s = subscribe(id);
         Subscription sub = s.sub();
         boolean isNew = s.isNew();
 
@@ -552,11 +540,11 @@ public final class Resonate {
             }
 
             if (isNew) {
-                registerAndSettle(prefixedId, sub);
+                registerAndSettle(id, sub);
             }
         });
 
-        return new ResonateHandle<>(prefixedId, sub, codec, df.returnType(), created);
+        return new ResonateHandle<>(id, sub, codec, df.returnType(), created);
     }
 
     // -- rpc --------------------------------------------------------------------
@@ -610,15 +598,14 @@ public final class Resonate {
 
     private <T> ResonateHandle<T> rpcResolved(String id, String name, int version, Type returnType, Object[] args) {
         Opts o = this.opts;
-        String prefixedId = prefixId(id);
 
         // Unlike run, the dispatched function may not run here, so args are packed raw (no local
         // pack/validate); Java has no kwargs, so the kwargs slot is always empty.
         PromiseCreateReq req = buildRootPromiseCreateReq(
-                prefixedId, name, new Args(Arrays.asList(args), Map.of()), version, o.timeout(), o.target());
+                id, name, new Args(Arrays.asList(args), Map.of()), version, o.timeout(), o.target());
 
         CompletableFuture<Void> created = new CompletableFuture<>();
-        Sub s = subscribe(prefixedId);
+        Sub s = subscribe(id);
         Subscription sub = s.sub();
         boolean isNew = s.isNew();
 
@@ -632,11 +619,11 @@ public final class Resonate {
             created.complete(null);
 
             if (isNew) {
-                registerAndSettle(prefixedId, sub);
+                registerAndSettle(id, sub);
             }
         });
 
-        return new ResonateHandle<>(prefixedId, sub, codec, returnType, created);
+        return new ResonateHandle<>(id, sub, codec, returnType, created);
     }
 
     // -- get / schedule / stop --------------------------------------------------
@@ -649,32 +636,31 @@ public final class Resonate {
      * Any}) -- there is no local function to read a return annotation from.
      */
     public ResonateHandle<Object> get(String id) {
-        String pid = prefixId(id);
-        Sub s = subscribe(pid);
+        Sub s = subscribe(id);
         Subscription sub = s.sub();
 
         if (!s.isNew()) {
-            return handleFor(pid, sub);
+            return handleFor(id, sub);
         }
 
         try {
-            return sender.promiseRegisterListener(pid, network.unicast())
+            return sender.promiseRegisterListener(id, network.unicast())
                     .handle((record, exc) -> {
                         if (exc != null) {
                             Throwable cause = unwrap(exc);
                             if (cause instanceof ResonateError) {
                                 synchronized (runtime.subs) {
-                                    if (runtime.subs.get(pid) == sub && !sub.settled()) {
-                                        runtime.subs.remove(pid);
+                                    if (runtime.subs.get(id) == sub && !sub.settled()) {
+                                        runtime.subs.remove(id);
                                     }
                                 }
                             }
                             throw sneaky(cause);
                         }
                         if (!"pending".equals(record.state())) {
-                            settleAndCleanup(pid, sub, record.state(), record.value());
+                            settleAndCleanup(id, sub, record.state(), record.value());
                         }
-                        return handleFor(pid, sub);
+                        return handleFor(id, sub);
                     })
                     .join();
         } catch (CompletionException exc) {
@@ -699,7 +685,7 @@ public final class Resonate {
         Value param = new Value(null, new TaskData(args, kwargs, funcName, version));
         try {
             return schedules
-                    .create(id, cron, idPrefix + "{{.id}}.{{.timestamp}}", timeoutMs(pt), param)
+                    .create(id, cron, "{{.id}}.{{.timestamp}}", timeoutMs(pt), param)
                     .thenApply(record -> new ResonateSchedule(id, schedules))
                     .join();
         } catch (CompletionException exc) {
@@ -766,10 +752,6 @@ public final class Resonate {
 
     // ── Helpers ────────────────────────────────────────────────────────────
 
-    private String prefixId(String id) {
-        return idPrefix.isEmpty() ? id : idPrefix + id;
-    }
-
     /** Recover the {@code (name, version)} a function object was registered under, raising if unregistered. */
     private NameVersion registeredKey(Method fn) {
         NameVersion recorded = registry.reverse(fn);
@@ -789,18 +771,16 @@ public final class Resonate {
     }
 
     private PromiseCreateReq buildRootPromiseCreateReq(
-            String prefixedId, String funcName, Args packed, int version, Duration timeout, String target) {
+            String id, String funcName, Args packed, int version, Duration timeout, String target) {
         Duration t = timeout != null ? timeout : DEFAULT_TOP_LEVEL_TIMEOUT;
         TaskData data = new TaskData(packed.args(), packed.kwargs(), funcName, version);
         Map<String, String> tags = new LinkedHashMap<>();
-        tags.put("resonate:origin", prefixedId);
-        // A genuine top-level root is its own lineage origin and id-generation prefix.
-        tags.put("resonate:prefix", prefixedId);
-        tags.put("resonate:branch", prefixedId);
-        tags.put("resonate:parent", prefixedId);
+        tags.put("resonate:origin", id);
+        tags.put("resonate:branch", id);
+        tags.put("resonate:parent", id);
         tags.put("resonate:scope", "global");
         tags.put("resonate:target", resolveTarget(target));
-        return new PromiseCreateReq(prefixedId, Send.nowMs() + timeoutMs(t), new Value(null, data), tags);
+        return new PromiseCreateReq(id, Send.nowMs() + timeoutMs(t), new Value(null, data), tags);
     }
 
     /** Encode a plaintext root req's {@code param} through the codec for the wire. */
