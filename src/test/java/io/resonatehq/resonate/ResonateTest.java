@@ -830,10 +830,11 @@ class ResonateTest {
     @Test
     void runRpcAndScheduleRejectAnInvalidRootId() {
         // Raised at the call site, before anything reaches the server: a root id becomes the
-        // origin of its whole lineage, so the reserved separators are rejected outright.
+        // origin of its whole lineage, so ':' is rejected outright ('.' is only read below the
+        // origin, so it stays legal).
         Resonate r = local();
         r.register(ResonateTest::noop);
-        for (String id : new String[] {"bad.id", "bad:id", "", "bad\u0000id"}) {
+        for (String id : new String[] {"bad:id", "bad.id:1", "", "bad\u0000id"}) {
             assertThrows(InvalidIdError.class, () -> r.run(id, ResonateTest::noop));
             assertThrows(InvalidIdError.class, () -> r.rpc(id, "remote"));
             assertThrows(InvalidIdError.class, () -> r.schedule(id, "* * * * *", "noop", List.of(), Map.of(), null, 1));

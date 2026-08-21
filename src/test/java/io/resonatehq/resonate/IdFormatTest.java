@@ -67,7 +67,6 @@ class IdFormatTest {
 
         String origin = tags.get("resonate:origin");
         if (origin != null) {
-            assertFalse(origin.contains("."), "dot_in_origin: origin=" + origin);
             assertFalse(origin.contains(":"), "colon_in_origin: origin=" + origin);
             assertTrue(
                     id.equals(origin) || id.startsWith(origin + ":"),
@@ -171,11 +170,15 @@ class IdFormatTest {
 
     // ── Tests ──────────────────────────────────────────────────────────────
 
-    @Test
-    void everyCreatedPromisePassesServerValidation() {
-        Map<String, Map<String, String>> promises = runWorkflow("wf");
+    @ParameterizedTest
+    @ValueSource(strings = {"wf", "my.app.workflow"})
+    void everyCreatedPromisePassesServerValidation(String root) {
+        // A dotted root is a caller's prerogative: '.' is only read below the origin, so every id
+        // minted under it still validates and still shares that origin.
+        Map<String, Map<String, String>> promises = runWorkflow(root);
         assertTrue(promises.size() > 1);
         promises.forEach(IdFormatTest::serverValidate);
+        promises.forEach((id, tags) -> assertEquals(root, serverOrigin(id), "id " + id));
     }
 
     @Test
@@ -242,21 +245,23 @@ class IdFormatTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"a.b", "a:b", "a.b:c", "", "a\u0000b"})
+    @ValueSource(strings = {"a:b", "a.b:c", "", "a\u0000b"})
     void validateRootIdRejectsReservedSeparators(String id) {
-        // Both separators are reserved in a root id: it becomes the origin of its whole lineage.
+        // ':' is the one reserved separator in a root id: it becomes the origin of its whole
+        // lineage. See the test below for what it actually breaks.
         assertThrows(InvalidIdError.class, () -> Ids.validateRootId(id));
     }
 
     @Test
-    void aDotInARootIdIsRejectedByTheServer() {
-        // '.' cannot even create the root: the origin tag would hold one.
-        try {
-            serverValidate("a.b", Map.of("resonate:origin", "a.b"));
-            fail("expected dot_in_origin");
-        } catch (AssertionError exc) {
-            assertTrue(exc.getMessage().contains("dot_in_origin"));
-        }
+    void aDotInARootIdIsAccepted() {
+        // '.' only separates lineage segments *below* the origin, which is read after the origin
+        // has been split off at the first ':'. A dotted root is therefore unambiguous, and the
+        // server takes it.
+        assertEquals("my.app.workflow", Ids.validateRootId("my.app.workflow"));
+        String id = Ids.joinId("my.app.workflow", "1");
+        assertEquals("my.app.workflow:1", id);
+        assertEquals("my.app.workflow", Ids.originOf(id));
+        serverValidate(id, Map.of("resonate:origin", "my.app.workflow"));
     }
 
     @Test
@@ -273,7 +278,7 @@ class IdFormatTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"a", "a-b", "a_b", "wf-1786636678653183000"})
+    @ValueSource(strings = {"a", "a-b", "a_b", "a.b", "wf-1786636678653183000"})
     void validateRootIdAcceptsBareIds(String id) {
         assertEquals(id, Ids.validateRootId(id));
     }

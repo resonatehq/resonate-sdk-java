@@ -18,8 +18,10 @@ import io.resonatehq.resonate.Errors.InvalidIdError;
  * the server's own rules.
  *
  * <p>A root id is supplied by the caller and becomes the origin of its whole lineage, so {@link
- * #validateRootId} keeps both separators out of it, exactly as the server does for the origin tag
- * itself.
+ * #validateRootId} keeps {@code :} out of it, exactly as the server does for the origin tag itself.
+ * {@code .} is <i>not</i> reserved there: it only separates segments below the origin, and the
+ * origin is recovered by splitting on the first {@code :}, so a dotted root ({@code
+ * my.app.workflow}) survives the round trip intact.
  */
 public final class Ids {
 
@@ -65,11 +67,15 @@ public final class Ids {
     /**
      * Validate a caller-supplied root id ({@code run} / {@code rpc} / {@code schedule}), returning it.
      *
-     * <p>Both separators are <b>reserved</b>: a root becomes the origin of its whole lineage, and the
-     * server rejects an origin containing either one outright ({@code dot_in_origin} / {@code
-     * colon_in_origin}). {@code .} because it separates lineage segments; {@code :} because the origin
-     * is everything before an id's <i>first</i> {@code :}, so an origin holding one could never be
-     * split back out of any id.
+     * <p>Only {@code :} is <b>reserved</b>: a root becomes the origin of its whole lineage, and the
+     * origin is everything before an id's <i>first</i> {@code :}, so an origin holding one could never
+     * be split back out of any id. The server rejects it outright ({@code colon_in_origin}).
+     *
+     * <p>{@code .} is allowed. It separates lineage segments <i>below</i> the origin, which is only
+     * ever read after the origin has been split off, so a dotted root id ({@code my.app.workflow}) is
+     * unambiguous:
+     *
+     * <pre>{@code my.app.workflow -> my.app.workflow:1 -> my.app.workflow:1.1}</pre>
      *
      * @throws InvalidIdError here, at the call site that named the workflow, rather than surfacing
      *     later as an opaque 400 from a background create.
@@ -81,13 +87,11 @@ public final class Ids {
         if (id.indexOf('\0') != -1) {
             throw new InvalidIdError(id, "id must not contain null bytes");
         }
-        for (String sep : new String[] {LINEAGE_SEP, ORIGIN_SEP}) {
-            if (id.contains(sep)) {
-                throw new InvalidIdError(
-                        id,
-                        "id must not contain '%s': it is reserved as a lineage separator in the ids the SDK mints below this one"
-                                .formatted(sep));
-            }
+        if (id.contains(ORIGIN_SEP)) {
+            throw new InvalidIdError(
+                    id,
+                    "id must not contain '%s': it separates the origin from the lineage in the ids the SDK mints below this one, so an id holding one could never be split back out"
+                            .formatted(ORIGIN_SEP));
         }
         return id;
     }

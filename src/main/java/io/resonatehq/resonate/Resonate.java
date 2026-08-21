@@ -704,9 +704,9 @@ public final class Resonate {
         try {
             // Each firing creates a root promise named from this id, so it is bound by the same
             // rules as a run/rpc id. The server stamps the *whole* templated id onto the fired
-            // promise's resonate:origin tag, so the template must join with a plain "-": a "."
-            // would make every child of a scheduled run rejected (dot_in_origin) and a ":" would
-            // hide the timestamp below the origin, collapsing every firing onto one lineage.
+            // promise's resonate:origin tag, so the template joins with a plain "-": a "." would
+            // survive there too (it is legal in an origin), but a ":" would hide the timestamp
+            // below the origin, collapsing every firing onto one lineage.
             return schedules
                     .create(Ids.validateRootId(id), cron, "{{.id}}-{{.timestamp}}", timeoutMs(pt), param, promiseTags)
                     .thenApply(record -> new ResonateSchedule(id, schedules))
