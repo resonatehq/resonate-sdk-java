@@ -38,7 +38,13 @@ class SchedulesTest {
         Schedules schedules = local();
 
         ScheduleRecord created = schedules
-                .create("unit-s1", "*/5 * * * *", "unit-s1.{{.timestamp}}", 60_000, new Value())
+                .create(
+                        "unit-s1",
+                        "*/5 * * * *",
+                        "unit-s1.{{.timestamp}}",
+                        60_000,
+                        new Value(),
+                        Map.of("resonate:target", "poll://any@default"))
                 .join();
         assertEquals("unit-s1", created.id());
         assertEquals("*/5 * * * *", created.cron());
@@ -82,10 +88,30 @@ class SchedulesTest {
         Schedules schedules = local();
 
         schedules
-                .create("unit-s-search", "* * * * *", "unit-s-search.{{.timestamp}}", 60_000, new Value())
+                .create(
+                        "unit-s-search",
+                        "* * * * *",
+                        "unit-s-search.{{.timestamp}}",
+                        60_000,
+                        new Value(),
+                        Map.of("resonate:target", "poll://any@default"))
                 .join();
 
         ScheduleSearchResult result = schedules.search(null, 100, null).join();
         assertTrue(result.schedules().stream().anyMatch(s -> s.id().equals("unit-s-search")));
+    }
+
+    @Test
+    void createWithoutResonateTargetIsRejected() {
+        Schedules schedules = local();
+
+        // A schedule.create whose promiseTags lack resonate:target is rejected by the server;
+        // LocalNetwork must reject it too, so the low-level create overload cannot pass tests
+        // against a request a real server returns 400 for.
+        CompletionException exc = assertThrows(CompletionException.class, () -> schedules
+                .create("unit-s-notarget", "*/5 * * * *", "unit-s-notarget.{{.timestamp}}", 60_000, new Value())
+                .join());
+        ServerError err = assertInstanceOf(ServerError.class, exc.getCause());
+        assertEquals(400, err.code());
     }
 }
