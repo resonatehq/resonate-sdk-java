@@ -1026,18 +1026,25 @@ public interface Network {
 
         Map<String, Object> scheduleCreate(long now, Object corrId, JsonNode req) {
             String scheduleId = requireStr(req, "id");
+            JsonNode promiseTags = get(req, "promiseTags");
+            // Every promise a schedule fires needs a routing target, so the server rejects a
+            // schedule.create whose promiseTags lack a resonate:target tag. Enforce it here too,
+            // or a create that a real server would reject with 400 silently succeeds in local
+            // mode and this regression class slips past LocalNetwork-backed tests.
+            if (promiseTags == null || !promiseTags.has("resonate:target")) {
+                throw new ServerError(400, "promiseTags must include a resonate:target tag");
+            }
             ScheduleStub existing = schedules.get(scheduleId);
             if (existing != null) {
                 return map("kind", "schedule.create", "corrId", corrId, "status", 200, "schedule", existing.toRecord());
             }
-            JsonNode promiseTags = get(req, "promiseTags");
             ScheduleStub stub = new ScheduleStub();
             stub.id = scheduleId;
             stub.cron = requireStr(req, "cron");
             stub.promiseId = requireStr(req, "promiseId");
             stub.promiseTimeout = i64(req, "promiseTimeout", 0);
             stub.promiseParam = get(req, "promiseParam");
-            stub.promiseTags = promiseTags != null ? promiseTags : new LinkedHashMap<>();
+            stub.promiseTags = promiseTags;
             stub.createdAt = now;
             Map<String, Object> record = stub.toRecord();
             schedules.put(scheduleId, stub);
